@@ -182,7 +182,7 @@ export default function MarketDetailPage({ params }: PageProps) {
                   <ul className="text-gray-600 space-y-2">
                     <li>• This market will resolve based on official announcements</li>
                     <li>• Resolution will occur within 24 hours of the event</li>
-                    <li>• In case of ambiguity, Kalshi reserves the right to resolve</li>
+                    <li>• In case of ambiguity, MITATE reserves the right to resolve</li>
                   </ul>
                 </CardContent>
               </Card>

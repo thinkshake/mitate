@@ -1,6 +1,6 @@
-# Kalshi Clone - Prediction Market UI Prototype
+# MITATE - Prediction Market UI Prototype
 
-A UI prototype of a prediction market platform (inspired by Kalshi), built with Next.js 16, TypeScript, and Tailwind CSS. This is a presentation-only prototype with mock data and no backend.
+A UI prototype of a prediction market platform, built with Next.js 16, TypeScript, and Tailwind CSS. This is a presentation-only prototype with mock data and no backend.
 
 ## Features
 
@@ -48,7 +48,7 @@ bun start
 ## Structure
 
 ```
-kalshi-clone/
+mitate/
 ├── app/
 │   ├── page.tsx              # Homepage
 │   ├── layout.tsx            # Root layout with header/footer

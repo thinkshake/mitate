@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Kalshi - Prediction Market",
+  title: "MITATE - Prediction Market",
   description: "Trade on the outcome of real-world events",
 };
 
@@ -27,7 +27,7 @@ export default function RootLayout({
           <div className="container mx-auto px-4">
             <div className="flex flex-col md:flex-row items-center justify-between text-sm text-gray-500">
               <div className="mb-4 md:mb-0">
-                © 2025 Kalshi Clone. Prototype for presentation only.
+                © 2025 MITATE. Prototype for presentation only.
               </div>
               <div className="flex space-x-6">
                 <a href="#" className="hover:text-black transition-colors">Terms</a>
