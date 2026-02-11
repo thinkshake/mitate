@@ -5,13 +5,41 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { MarketCard } from "@/components/market-card";
-import { categories, allMarkets, Category } from "@/lib/mock-data";
+import { useMarkets } from "@/hooks/useMarkets";
+import { formatOdds, formatXrp, formatDeadline, type Market } from "@/lib/api";
+
+// Categories for filtering (could be fetched from API in future)
+const categories = [
+  { id: "crypto", name: "Crypto", icon: "₿" },
+  { id: "economics", name: "Economics", icon: "📈" },
+  { id: "tech", name: "Technology", icon: "💻" },
+  { id: "sports", name: "Sports", icon: "⚽" },
+  { id: "politics", name: "Politics", icon: "🏛️" },
+  { id: "entertainment", name: "Entertainment", icon: "🎬" },
+];
 
 export default function MarketsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const { markets, loading, error, refetch } = useMarkets();
 
-  const filteredMarkets = allMarkets.filter((market) => {
+  // Transform API markets to display format
+  const displayMarkets = markets.map((m) => {
+    const odds = formatOdds(m);
+    return {
+      id: m.id,
+      title: m.title,
+      category: m.category || "other",
+      yesPrice: odds.yes,
+      noPrice: odds.no,
+      volume: Number(m.poolTotalDrops),
+      expiresAt: formatDeadline(m.bettingDeadline),
+      description: m.description,
+      status: m.status,
+    };
+  });
+
+  const filteredMarkets = displayMarkets.filter((market) => {
     const matchesCategory = !selectedCategory || market.category === selectedCategory;
     const matchesSearch =
       !searchQuery ||
@@ -20,13 +48,48 @@ export default function MarketsPage() {
     return matchesCategory && matchesSearch;
   });
 
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-48 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-96 mb-8"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="h-48 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center py-12">
+          <div className="text-red-500 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load markets</h3>
+          <p className="text-gray-500 mb-4">{error}</p>
+          <Button onClick={refetch} className="bg-black text-white hover:bg-gray-800">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Page Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-black mb-2">Markets</h1>
         <p className="text-gray-600">
-          Browse and trade on thousands of real-world events
+          Browse and trade on prediction markets powered by XRPL
         </p>
       </div>
 
@@ -92,7 +155,6 @@ export default function MarketsPage() {
             <CardContent className="p-4 text-center">
               <div className="text-2xl mb-1">{category.icon}</div>
               <div className="font-medium text-black text-sm">{category.name}</div>
-              <div className="text-xs text-gray-500">{category.count}</div>
             </CardContent>
           </Card>
         ))}
@@ -145,7 +207,9 @@ export default function MarketsPage() {
             No markets found
           </h3>
           <p className="text-gray-500 mb-4">
-            Try adjusting your search or filter criteria
+            {markets.length === 0
+              ? "No markets have been created yet"
+              : "Try adjusting your search or filter criteria"}
           </p>
           <Button
             variant="outline"

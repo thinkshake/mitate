@@ -28,7 +28,7 @@ phases:
     - name: 3-market-lifecycle
       status: done
     - name: 4-trading-resolution
-      status: planned
+      status: done
     - name: 5-frontend
       status: planned
     - name: 6-polish
