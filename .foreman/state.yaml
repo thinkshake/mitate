@@ -26,7 +26,7 @@ phases:
     - name: 2-xrpl-core
       status: done
     - name: 3-market-lifecycle
-      status: planned
+      status: done
     - name: 4-trading-resolution
       status: planned
     - name: 5-frontend

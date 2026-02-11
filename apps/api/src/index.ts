@@ -7,6 +7,8 @@ import { createXrplClient, closeXrplClient, getXrplHealth } from "./xrpl/client"
 import healthRoutes from "./routes/health";
 import marketsRoutes from "./routes/markets";
 import betsRoutes from "./routes/bets";
+import offersRoutes from "./routes/offers";
+import resolveRoutes from "./routes/resolve";
 
 const app = new Hono();
 
@@ -25,6 +27,8 @@ app.use(
 app.route("/", healthRoutes);
 app.route("/api/markets", marketsRoutes);
 app.route("/api", betsRoutes);
+app.route("/api", offersRoutes);
+app.route("/api", resolveRoutes);
 
 // Root endpoint
 app.get("/", (c) => {
