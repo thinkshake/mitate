@@ -30,6 +30,6 @@ phases:
     - name: 4-trading-resolution
       status: done
     - name: 5-frontend
-      status: planned
+      status: done
     - name: 6-polish
       status: planned
