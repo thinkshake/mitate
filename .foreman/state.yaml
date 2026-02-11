@@ -6,9 +6,9 @@ gates:
         approved_by: auto
         reason: ""
     implementation:
-        status: open
-        approved_at: null
-        approved_by: ""
+        status: approved
+        approved_at: 2026-02-11T21:51:50.903933+09:00
+        approved_by: auto
         reason: ""
     phases:
         status: approved
@@ -32,4 +32,4 @@ phases:
     - name: 5-frontend
       status: done
     - name: 6-polish
-      status: planned
+      status: done

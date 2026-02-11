@@ -72,7 +72,31 @@ MITATE is a prediction market DApp built on XRPL (XRP Ledger) using parimutuel b
 - Node.js 20+ (for Next.js)
 - XRPL Testnet accounts (operator, issuer)
 
-### Setup
+### Option 1: Docker Compose (Recommended)
+
+```bash
+# Clone
+git clone https://github.com/thinkshake/mitate.git
+cd mitate
+
+# Configure environment
+cp .env.example .env
+# Edit .env with XRPL addresses
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:3001
+
+### Option 2: Local Development
 
 ```bash
 # Clone
