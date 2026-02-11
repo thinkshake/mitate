@@ -22,7 +22,7 @@ gates:
         reason: ""
 phases:
     - name: 1-foundation
-      status: planned
+      status: done
     - name: 2-xrpl-core
       status: planned
     - name: 3-market-lifecycle
