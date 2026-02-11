@@ -5,6 +5,8 @@ import { config, validateConfig } from "./config";
 import { initDatabase, closeDatabase } from "./db";
 import { createXrplClient, closeXrplClient, getXrplHealth } from "./xrpl/client";
 import healthRoutes from "./routes/health";
+import marketsRoutes from "./routes/markets";
+import betsRoutes from "./routes/bets";
 
 const app = new Hono();
 
@@ -21,6 +23,8 @@ app.use(
 
 // Routes
 app.route("/", healthRoutes);
+app.route("/api/markets", marketsRoutes);
+app.route("/api", betsRoutes);
 
 // Root endpoint
 app.get("/", (c) => {

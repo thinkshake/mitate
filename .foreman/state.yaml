@@ -24,7 +24,7 @@ phases:
     - name: 1-foundation
       status: done
     - name: 2-xrpl-core
-      status: planned
+      status: done
     - name: 3-market-lifecycle
       status: planned
     - name: 4-trading-resolution

@@ -11,8 +11,10 @@
     "migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
     "hono": "^4.7.0",
-    "xrpl": "^4.2.0"
+    "xrpl": "^4.2.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "^1.2.4",
