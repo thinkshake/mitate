@@ -1,0 +1,35 @@
+current_stage: implementation
+gates:
+    design:
+        status: approved
+        approved_at: 2026-02-11T18:50:46.074482+09:00
+        approved_by: auto
+        reason: ""
+    implementation:
+        status: open
+        approved_at: null
+        approved_by: ""
+        reason: ""
+    phases:
+        status: approved
+        approved_at: 2026-02-11T18:52:43.653177+09:00
+        approved_by: auto
+        reason: ""
+    requirements:
+        status: approved
+        approved_at: 2026-02-11T18:47:54.779816+09:00
+        approved_by: auto
+        reason: ""
+phases:
+    - name: 1-foundation
+      status: planned
+    - name: 2-xrpl-core
+      status: planned
+    - name: 3-market-lifecycle
+      status: planned
+    - name: 4-trading-resolution
+      status: planned
+    - name: 5-frontend
+      status: planned
+    - name: 6-polish
+      status: planned

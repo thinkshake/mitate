@@ -112,7 +112,7 @@ export default function MarketsPage() {
         {searchQuery && (
           <span>
             {" "}
-            matching "<span className="text-black font-medium">{searchQuery}</span>"
+            matching &ldquo;<span className="text-black font-medium">{searchQuery}</span>&rdquo;
           </span>
         )}
       </div>

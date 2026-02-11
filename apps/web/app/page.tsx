@@ -117,7 +117,7 @@ export default function HomePage() {
               </div>
               <h3 className="font-semibold text-black mb-2">Get Paid</h3>
               <p className="text-gray-600">
-                If you're right, your contracts pay out $1 each. If not, they expire worthless.
+                If you&apos;re right, your contracts pay out $1 each. If not, they expire worthless.
               </p>
             </div>
           </div>
