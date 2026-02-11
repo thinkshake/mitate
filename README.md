@@ -117,6 +117,34 @@ cd apps/api && bun run migrate
 bun run dev  # Starts both frontend and backend
 ```
 
+### Getting XRPL Testnet Accounts
+
+You need two XRPL Testnet accounts: **Operator** (holds escrow, receives bets) and **Issuer** (mints tokens).
+
+1. **Get accounts from the XRPL Testnet Faucet:**
+   ```bash
+   # Get Operator account
+   curl -X POST https://faucet.altnet.rippletest.net/accounts
+   # Response: {"account":{"xAddress":"...", "address":"rXXX...", "secret":"sXXX..."}, ...}
+   
+   # Get Issuer account (run again)
+   curl -X POST https://faucet.altnet.rippletest.net/accounts
+   ```
+   
+   Or use the web interface: https://xrpl.org/resources/dev-tools/xrp-faucets
+
+2. **Save the addresses:**
+   - `XRPL_OPERATOR_ADDRESS` = first account's `address` (starts with `r`)
+   - `XRPL_ISSUER_ADDRESS` = second account's `address` (starts with `r`)
+   - Keep the `secret` values safe — needed for signing transactions
+
+3. **Generate Admin API Key:**
+   ```bash
+   # Generate a random 32-character key
+   openssl rand -hex 16
+   # Or use any secure random string generator
+   ```
+
 ### Environment Variables
 
 **Backend (apps/api/.env)**
@@ -125,9 +153,9 @@ PORT=3001
 DATABASE_PATH=./data/mitate.db
 XRPL_RPC_URL=https://s.altnet.rippletest.net:51234
 XRPL_WS_URL=wss://s.altnet.rippletest.net:51233
-XRPL_OPERATOR_ADDRESS=rXXX...
-XRPL_ISSUER_ADDRESS=rYYY...
-ADMIN_API_KEY=your-secret-key
+XRPL_OPERATOR_ADDRESS=rXXX...    # From faucet step 1
+XRPL_ISSUER_ADDRESS=rYYY...      # From faucet step 1
+ADMIN_API_KEY=your-secret-key    # From step 3
 ```
 
 **Frontend (apps/web/.env.local)**
