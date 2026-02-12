@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWallet } from "@/contexts/WalletContext";
@@ -43,25 +43,31 @@ export default function PortfolioPage() {
         <div className="max-w-md mx-auto">
           <h1 className="text-2xl font-bold text-black mb-4">Connect Your Wallet</h1>
           <p className="text-gray-600 mb-8">
-            Connect your XRPL wallet to view your portfolio, bets, and payouts.
+            Connect your GemWallet to view your portfolio, bets, and payouts.
           </p>
-          <div className="space-y-3">
+          {!wallet.gemWalletInstalled ? (
+            <a
+              href="https://gemwallet.app"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button className="w-full bg-black hover:bg-gray-800 text-white" size="lg">
+                Install GemWallet
+              </Button>
+            </a>
+          ) : (
             <Button
-              onClick={() => wallet.connect("xaman")}
+              onClick={wallet.connect}
+              disabled={wallet.loading}
               className="w-full bg-black hover:bg-gray-800 text-white"
               size="lg"
             >
-              Connect with Xaman
+              {wallet.loading ? "Connecting..." : "Connect GemWallet"}
             </Button>
-            <Button
-              onClick={() => wallet.connect("gemwallet")}
-              variant="outline"
-              className="w-full border-gray-300"
-              size="lg"
-            >
-              Connect with GemWallet
-            </Button>
-          </div>
+          )}
+          {wallet.error && (
+            <p className="mt-4 text-red-600 text-sm">{wallet.error}</p>
+          )}
         </div>
       </div>
     );
@@ -95,6 +101,7 @@ export default function PortfolioPage() {
         <h1 className="text-3xl font-bold text-black mb-2">Portfolio</h1>
         <p className="text-gray-600">
           Connected: {wallet.address?.slice(0, 10)}...{wallet.address?.slice(-8)}
+          <span className="ml-2 text-xs text-gray-400">({wallet.network})</span>
         </p>
       </div>
 
@@ -187,6 +194,16 @@ export default function PortfolioPage() {
                           </span>
                           <Badge className={statusBadge(bet.status)}>{bet.status}</Badge>
                         </div>
+                        {bet.paymentTx && (
+                          <a
+                            href={`https://testnet.xrpl.org/transactions/${bet.paymentTx}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                          >
+                            View tx →
+                          </a>
+                        )}
                       </div>
                       <div className="text-right">
                         {bet.payout && (

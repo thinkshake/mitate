@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,11 +14,13 @@ import {
   placeBet,
   confirmBet,
   previewBet,
+  getBetsForMarket,
   formatXrp,
   formatOdds,
   formatDeadline,
   xrpToDrops,
   dropsToXrp,
+  type Bet,
 } from "@/lib/api";
 
 interface PageProps {
@@ -35,6 +37,43 @@ export default function MarketDetailPage({ params }: PageProps) {
   const [betLoading, setBetLoading] = useState(false);
   const [betError, setBetError] = useState<string | null>(null);
   const [betSuccess, setBetSuccess] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    potentialPayout: string;
+    impliedOdds: string;
+  } | null>(null);
+  const [recentBets, setRecentBets] = useState<Bet[]>([]);
+
+  // Fetch bet preview when amount or side changes
+  useEffect(() => {
+    if (!id || !xrpAmount || parseFloat(xrpAmount) <= 0) {
+      setPreview(null);
+      return;
+    }
+
+    const fetchPreview = async () => {
+      try {
+        const amountDrops = xrpToDrops(parseFloat(xrpAmount));
+        const data = await previewBet(id, selectedSide, amountDrops);
+        setPreview({
+          potentialPayout: data.potentialPayout,
+          impliedOdds: data.impliedOdds,
+        });
+      } catch (err) {
+        setPreview(null);
+      }
+    };
+
+    const debounce = setTimeout(fetchPreview, 300);
+    return () => clearTimeout(debounce);
+  }, [id, xrpAmount, selectedSide]);
+
+  // Fetch recent bets for this market
+  useEffect(() => {
+    if (!id) return;
+    getBetsForMarket(id)
+      .then((bets) => setRecentBets(bets.slice(0, 5)))
+      .catch(() => setRecentBets([]));
+  }, [id]);
 
   if (loading) {
     return (
@@ -63,19 +102,11 @@ export default function MarketDetailPage({ params }: PageProps) {
   }
 
   const odds = formatOdds(market);
-  const poolXrp = dropsToXrp(market.poolTotalDrops);
-  const amountDrops = xrpToDrops(parseFloat(xrpAmount) || 0);
   const selectedOdds = selectedSide === "YES" ? odds.yes : odds.no;
-
-  // Estimate payout (simplified parimutuel)
-  const estimatedPayout =
-    selectedOdds > 0
-      ? (parseFloat(xrpAmount) || 0) * (100 / selectedOdds)
-      : parseFloat(xrpAmount) || 0;
 
   const handlePlaceBet = async () => {
     if (!wallet.connected || !wallet.address) {
-      wallet.connect("xaman");
+      wallet.connect();
       return;
     }
 
@@ -84,30 +115,38 @@ export default function MarketDetailPage({ params }: PageProps) {
     setBetSuccess(null);
 
     try {
-      // 1. Create bet intent
+      const amountDrops = xrpToDrops(parseFloat(xrpAmount));
+
+      // 1. Create bet intent - get tx payloads from backend
       const result = await placeBet(id, selectedSide, amountDrops, wallet.address);
 
-      // 2. Sign TrustSet if needed (first time betting on this outcome)
+      // 2. Sign and submit TrustSet if needed
       if (result.trustSet) {
-        const trustTxHash = await wallet.signTransaction(result.trustSet);
-        if (!trustTxHash) {
-          throw new Error("TrustSet transaction was not signed");
+        const trustResult = await wallet.signAndSubmitTransaction(result.trustSet);
+        if (!trustResult?.hash) {
+          throw new Error("TrustSet transaction was rejected");
         }
-        // Wait a moment for the trust line to be established
-        await new Promise((r) => setTimeout(r, 2000));
+        // Wait for TrustSet to be validated
+        await new Promise((r) => setTimeout(r, 4000));
       }
 
-      // 3. Sign Payment
-      const paymentTxHash = await wallet.signTransaction(result.payment);
-      if (!paymentTxHash) {
-        throw new Error("Payment transaction was not signed");
+      // 3. Sign and submit Payment
+      const paymentResult = await wallet.signAndSubmitTransaction(result.payment);
+      if (!paymentResult?.hash) {
+        throw new Error("Payment transaction was rejected");
       }
 
-      // 4. Confirm bet
-      await confirmBet(id, result.betId, paymentTxHash);
+      // 4. Confirm bet with backend
+      await confirmBet(id, result.betId, paymentResult.hash);
 
-      setBetSuccess(`Bet placed successfully! Potential payout: ${formatXrp(result.potentialPayout)}`);
+      setBetSuccess(
+        `Bet placed! Tx: ${paymentResult.hash.slice(0, 8)}... Potential payout: ${formatXrp(result.potentialPayout)}`
+      );
+
+      // Refresh market data and bets
       refetch();
+      const bets = await getBetsForMarket(id);
+      setRecentBets(bets.slice(0, 5));
     } catch (err) {
       setBetError(err instanceof Error ? err.message : "Failed to place bet");
     } finally {
@@ -162,23 +201,23 @@ export default function MarketDetailPage({ params }: PageProps) {
               <div className="grid grid-cols-2 gap-8">
                 <div>
                   <div className="text-sm text-gray-500 mb-1">Yes</div>
-                  <div className="text-4xl font-bold text-black">{odds.yes}%</div>
+                  <div className="text-4xl font-bold text-green-600">{odds.yes}%</div>
                   <div className="text-sm text-gray-500 mt-1">
                     {formatXrp(market.yesTotalDrops)} pool
                   </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500 mb-1">No</div>
-                  <div className="text-4xl font-bold text-black">{odds.no}%</div>
+                  <div className="text-4xl font-bold text-red-600">{odds.no}%</div>
                   <div className="text-sm text-gray-500 mt-1">
                     {formatXrp(market.noTotalDrops)} pool
                   </div>
                 </div>
               </div>
               <div className="mt-6">
-                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-4 bg-red-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-black rounded-full transition-all duration-300"
+                    className="h-full bg-green-500 rounded-full transition-all duration-300"
                     style={{ width: `${odds.yes}%` }}
                   />
                 </div>
@@ -222,8 +261,8 @@ export default function MarketDetailPage({ params }: PageProps) {
               <TabsTrigger value="about" className="data-[state=active]:bg-white">
                 About
               </TabsTrigger>
-              <TabsTrigger value="rules" className="data-[state=active]:bg-white">
-                Rules
+              <TabsTrigger value="bets" className="data-[state=active]:bg-white">
+                Recent Bets
               </TabsTrigger>
               <TabsTrigger value="xrpl" className="data-[state=active]:bg-white">
                 XRPL Details
@@ -233,20 +272,50 @@ export default function MarketDetailPage({ params }: PageProps) {
               <Card className="border border-gray-200">
                 <CardContent className="p-6">
                   <h3 className="font-semibold text-black mb-3">Description</h3>
-                  <p className="text-gray-600">{market.description}</p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="rules" className="mt-4">
-              <Card className="border border-gray-200">
-                <CardContent className="p-6">
+                  <p className="text-gray-600 mb-4">{market.description}</p>
                   <h3 className="font-semibold text-black mb-3">Parimutuel Rules</h3>
-                  <ul className="text-gray-600 space-y-2">
+                  <ul className="text-gray-600 space-y-2 text-sm">
                     <li>• All bets on the winning outcome share the total pool</li>
                     <li>• Payout = (Your Bet / Total Winning Bets) × Total Pool</li>
                     <li>• Resolution requires 2-of-3 multi-sign approval</li>
-                    <li>• Payouts are executed in XRP on XRPL</li>
                   </ul>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="bets" className="mt-4">
+              <Card className="border border-gray-200">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-black mb-3">Recent Bets</h3>
+                  {recentBets.length === 0 ? (
+                    <p className="text-gray-500 text-sm">No bets yet</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {recentBets.map((bet) => (
+                        <div
+                          key={bet.id}
+                          className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              className={
+                                bet.outcome === "YES"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }
+                            >
+                              {bet.outcome}
+                            </Badge>
+                            <span className="text-sm text-gray-500">
+                              {bet.userId?.slice(0, 8)}...
+                            </span>
+                          </div>
+                          <span className="font-medium">
+                            {formatXrp(bet.amountDrops)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -270,6 +339,12 @@ export default function MarketDetailPage({ params }: PageProps) {
                     <div className="flex justify-between">
                       <span className="text-gray-500">Escrow Sequence</span>
                       <span className="text-black">{market.xrplEscrowSequence || "—"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Market ID</span>
+                      <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        {market.id}
+                      </code>
                     </div>
                   </div>
                 </CardContent>
@@ -364,12 +439,14 @@ export default function MarketDetailPage({ params }: PageProps) {
                       <span className="text-gray-500">Current odds</span>
                       <span className="text-black font-medium">{selectedOdds}%</span>
                     </div>
-                    <div className="flex justify-between pt-2 border-t border-gray-200">
-                      <span className="text-gray-700 font-medium">Est. payout if win</span>
-                      <span className="text-green-600 font-semibold">
-                        ~{estimatedPayout.toFixed(2)} XRP
-                      </span>
-                    </div>
+                    {preview && (
+                      <div className="flex justify-between pt-2 border-t border-gray-200">
+                        <span className="text-gray-700 font-medium">Est. payout if win</span>
+                        <span className="text-green-600 font-semibold">
+                          {formatXrp(preview.potentialPayout)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Errors/Success */}
@@ -395,7 +472,7 @@ export default function MarketDetailPage({ params }: PageProps) {
                       ? "Processing..."
                       : wallet.connected
                       ? `Bet ${xrpAmount} XRP on ${selectedSide}`
-                      : "Connect Wallet"}
+                      : "Connect GemWallet"}
                   </Button>
 
                   {/* Wallet Status */}

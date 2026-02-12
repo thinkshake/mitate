@@ -29,6 +29,7 @@ export interface Bet {
   id: string;
   marketId: string;
   marketTitle?: string;
+  userId?: string;
   outcome: "YES" | "NO";
   amountDrops: string;
   status: "Pending" | "Confirmed" | "Failed" | "Refunded";

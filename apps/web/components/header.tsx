@@ -69,7 +69,7 @@ export function Header() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem className="text-gray-500 text-xs">
-                  {wallet.provider === "xaman" ? "Xaman" : "GemWallet"} • Testnet
+                  GemWallet • {wallet.network}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
@@ -94,54 +94,60 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  className="bg-black hover:bg-gray-800 text-white"
-                  disabled={wallet.loading}
+            <Button
+              onClick={wallet.connect}
+              disabled={wallet.loading}
+              className="bg-black hover:bg-gray-800 text-white"
+            >
+              {wallet.loading ? (
+                <>
+                  <svg
+                    className="mr-2 h-4 w-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  Connecting...
+                </>
+              ) : !wallet.gemWalletInstalled ? (
+                <a
+                  href="https://gemwallet.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center"
                 >
-                  {wallet.loading ? (
-                    <>
-                      <svg
-                        className="mr-2 h-4 w-4 animate-spin"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                      Connecting...
-                    </>
-                  ) : (
-                    "Connect Wallet"
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => wallet.connect("xaman")}>
-                  <span className="mr-2">📱</span>
-                  Xaman (XUMM)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => wallet.connect("gemwallet")}>
+                  Install GemWallet
+                </a>
+              ) : (
+                <>
                   <span className="mr-2">💎</span>
-                  GemWallet
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  Connect GemWallet
+                </>
+              )}
+            </Button>
           )}
         </div>
       </div>
+
+      {/* Error Toast */}
+      {wallet.error && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600">
+          {wallet.error}
+        </div>
+      )}
 
       {/* Mobile Navigation */}
       <nav className="md:hidden border-t border-gray-200">

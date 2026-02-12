@@ -1,24 +1,29 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import {
+  isInstalled,
+  getAddress,
+  getNetwork,
+  signTransaction,
+  submitTransaction,
+} from "@gemwallet/api";
 
 // ── Types ──────────────────────────────────────────────────────────
-
-export type WalletProvider = "xaman" | "gemwallet" | null;
 
 export interface WalletState {
   connected: boolean;
   address: string | null;
-  provider: WalletProvider;
   network: string | null;
   loading: boolean;
   error: string | null;
+  gemWalletInstalled: boolean;
 }
 
 export interface WalletContextType extends WalletState {
-  connect: (provider: WalletProvider) => Promise<void>;
+  connect: () => Promise<void>;
   disconnect: () => void;
-  signTransaction: (tx: unknown) => Promise<string | null>;
+  signAndSubmitTransaction: (tx: unknown) => Promise<{ hash: string } | null>;
 }
 
 // ── Context ────────────────────────────────────────────────────────
@@ -31,81 +36,89 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>({
     connected: false,
     address: null,
-    provider: null,
     network: null,
     loading: false,
     error: null,
+    gemWalletInstalled: false,
   });
 
-  // Restore from localStorage on mount
+  // Check if GemWallet is installed on mount
   useEffect(() => {
-    const saved = localStorage.getItem("mitate_wallet");
-    if (saved) {
+    const checkGemWallet = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed.address && parsed.provider) {
-          setState((s) => ({
-            ...s,
-            connected: true,
-            address: parsed.address,
-            provider: parsed.provider,
-            network: parsed.network || "testnet",
-          }));
+        const response = await isInstalled();
+        setState((s) => ({
+          ...s,
+          gemWalletInstalled: response.result.isInstalled,
+        }));
+
+        // Try to restore session
+        const saved = localStorage.getItem("mitate_wallet");
+        if (saved && response.result.isInstalled) {
+          const parsed = JSON.parse(saved);
+          if (parsed.address) {
+            // Verify the address is still valid with GemWallet
+            const addrResponse = await getAddress();
+            if (addrResponse.result?.address === parsed.address) {
+              const netResponse = await getNetwork();
+              setState((s) => ({
+                ...s,
+                connected: true,
+                address: parsed.address,
+                network: netResponse.result?.network || "Testnet",
+              }));
+            } else {
+              localStorage.removeItem("mitate_wallet");
+            }
+          }
         }
-      } catch {
-        localStorage.removeItem("mitate_wallet");
+      } catch (err) {
+        console.log("GemWallet not detected");
       }
-    }
+    };
+
+    checkGemWallet();
   }, []);
 
-  const connect = useCallback(async (provider: WalletProvider) => {
-    if (!provider) return;
-
+  const connect = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
 
     try {
-      let address: string | null = null;
-      let network: string = "testnet";
-
-      if (provider === "xaman") {
-        // Xaman (XUMM) SDK integration
-        // In production, use @xumm/sdk
-        // For demo, use prompt as placeholder
-        address = prompt("Enter your XRPL Testnet address (Xaman):");
-        if (!address || !address.startsWith("r")) {
-          throw new Error("Invalid XRPL address");
-        }
-      } else if (provider === "gemwallet") {
-        // GemWallet integration
-        // In production, use @nicholasjin/gemwallet-api
-        // For demo, use prompt as placeholder
-        if (typeof window !== "undefined" && (window as any).gemWallet) {
-          const gem = (window as any).gemWallet;
-          const response = await gem.getAddress();
-          address = response?.address;
-          network = response?.network || "testnet";
-        } else {
-          address = prompt("Enter your XRPL Testnet address (GemWallet):");
-        }
-        if (!address || !address.startsWith("r")) {
-          throw new Error("Invalid XRPL address");
-        }
+      // Check if installed
+      const installedResponse = await isInstalled();
+      if (!installedResponse.result.isInstalled) {
+        throw new Error("GemWallet is not installed. Please install it from gemwallet.app");
       }
 
-      if (address) {
-        const walletData = { address, provider, network };
-        localStorage.setItem("mitate_wallet", JSON.stringify(walletData));
-        setState({
-          connected: true,
-          address,
-          provider,
-          network,
-          loading: false,
-          error: null,
-        });
-      } else {
-        throw new Error("Failed to get address");
+      // Get address
+      const addressResponse = await getAddress();
+      if (!addressResponse.result?.address) {
+        throw new Error("Failed to get address from GemWallet");
       }
+
+      const address = addressResponse.result.address;
+
+      // Get network
+      const networkResponse = await getNetwork();
+      const network = networkResponse.result?.network || "Testnet";
+
+      // Verify we're on testnet (GemWallet uses enum, but we check string representation)
+      const networkStr = String(network).toLowerCase();
+      if (!networkStr.includes("testnet") && !networkStr.includes("test")) {
+        throw new Error(`Please switch GemWallet to Testnet. Current: ${network}`);
+      }
+
+      // Save to localStorage
+      localStorage.setItem("mitate_wallet", JSON.stringify({ address }));
+
+      setState({
+        connected: true,
+        address,
+        network,
+        loading: false,
+        error: null,
+        gemWalletInstalled: true,
+      });
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -117,54 +130,45 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(() => {
     localStorage.removeItem("mitate_wallet");
-    setState({
+    setState((s) => ({
+      ...s,
       connected: false,
       address: null,
-      provider: null,
       network: null,
-      loading: false,
       error: null,
-    });
+    }));
   }, []);
 
-  const signTransaction = useCallback(
-    async (tx: unknown): Promise<string | null> => {
-      if (!state.connected || !state.provider) {
+  const signAndSubmitTransaction = useCallback(
+    async (tx: unknown): Promise<{ hash: string } | null> => {
+      if (!state.connected) {
         throw new Error("Wallet not connected");
       }
 
       try {
-        if (state.provider === "xaman") {
-          // In production, use XUMM SDK to create payload and sign
-          // For demo, return placeholder
-          console.log("Xaman sign request:", tx);
-          const txHash = prompt("Enter the tx hash after signing with Xaman:");
-          return txHash;
-        } else if (state.provider === "gemwallet") {
-          // In production, use GemWallet API
-          if (typeof window !== "undefined" && (window as any).gemWallet) {
-            const gem = (window as any).gemWallet;
-            const result = await gem.signAndSubmitTransaction(tx);
-            return result?.txHash;
-          }
-          console.log("GemWallet sign request:", tx);
-          const txHash = prompt("Enter the tx hash after signing with GemWallet:");
-          return txHash;
+        // Sign and submit via GemWallet
+        const response = await submitTransaction({
+          transaction: tx as any,
+        });
+
+        if (response.result?.hash) {
+          return { hash: response.result.hash };
         }
-        return null;
+
+        throw new Error("Transaction failed or was rejected");
       } catch (err) {
-        console.error("Sign transaction error:", err);
+        console.error("Transaction error:", err);
         throw err;
       }
     },
-    [state.connected, state.provider]
+    [state.connected]
   );
 
   const value: WalletContextType = {
     ...state,
     connect,
     disconnect,
-    signTransaction,
+    signAndSubmitTransaction,
   };
 
   return (
