@@ -2,6 +2,7 @@
  * DB model for the markets table.
  */
 import { getDb, generateId } from "../index";
+import { createOutcomesBatch, getOutcomesWithProbability, type Outcome } from "./outcomes";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -21,8 +22,10 @@ export interface Market {
   title: string;
   description: string;
   category: string | null;
+  category_label: string | null;
   status: MarketStatus;
   outcome: MarketOutcome | null;
+  resolved_outcome_id: string | null;
   created_by: string;
   betting_deadline: string;
   resolution_time: string | null;
@@ -40,10 +43,15 @@ export interface Market {
   operator_address: string;
 }
 
+export interface MarketWithOutcomes extends Market {
+  outcomes: (Outcome & { probability: number })[];
+}
+
 export interface MarketInsert {
   title: string;
   description: string;
   category?: string;
+  categoryLabel?: string;
   createdBy: string;
   bettingDeadline: string;
   resolutionTime?: string;
@@ -51,12 +59,18 @@ export interface MarketInsert {
   operatorAddress: string;
 }
 
+export interface MarketWithOutcomesInsert extends MarketInsert {
+  outcomes: { label: string }[];
+}
+
 export interface MarketUpdate {
   title?: string;
   description?: string;
   category?: string;
+  categoryLabel?: string;
   status?: MarketStatus;
   outcome?: MarketOutcome;
+  resolvedOutcomeId?: string;
   bettingDeadline?: string;
   resolutionTime?: string;
   xrplMarketTx?: string;
@@ -77,17 +91,18 @@ export interface MarketUpdate {
 export function createMarket(market: MarketInsert): Market {
   const db = getDb();
   const id = generateId("mkt");
-  
+
   db.query(
     `INSERT INTO markets (
-      id, title, description, category, status, created_by,
+      id, title, description, category, category_label, status, created_by,
       betting_deadline, resolution_time, issuer_address, operator_address
-    ) VALUES (?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?)`
   ).run(
     id,
     market.title,
     market.description,
     market.category ?? null,
+    market.categoryLabel ?? null,
     market.createdBy,
     market.bettingDeadline,
     market.resolutionTime ?? null,
@@ -96,6 +111,69 @@ export function createMarket(market: MarketInsert): Market {
   );
 
   return getMarketById(id)!;
+}
+
+/**
+ * Create a market with outcomes in a single transaction.
+ */
+export function createMarketWithOutcomes(
+  market: MarketWithOutcomesInsert
+): MarketWithOutcomes {
+  const db = getDb();
+  db.exec("BEGIN TRANSACTION");
+  try {
+    const created = createMarket(market);
+    createOutcomesBatch(
+      created.id,
+      market.outcomes.map((o) => ({ label: o.label }))
+    );
+    db.exec("COMMIT");
+    return getMarketWithOutcomes(created.id)!;
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+/**
+ * Get a market with its outcomes and calculated probabilities.
+ */
+export function getMarketWithOutcomes(id: string): MarketWithOutcomes | null {
+  const market = getMarketById(id);
+  if (!market) return null;
+
+  const outcomes = getOutcomesWithProbability(id);
+  return { ...market, outcomes };
+}
+
+/**
+ * List all markets with outcomes attached.
+ */
+export function listMarketsWithOutcomes(
+  filters?: { status?: MarketStatus; category?: string }
+): MarketWithOutcomes[] {
+  const db = getDb();
+  const conditions: string[] = [];
+  const values: string[] = [];
+
+  if (filters?.status) {
+    conditions.push("status = ?");
+    values.push(filters.status);
+  }
+  if (filters?.category) {
+    conditions.push("category = ?");
+    values.push(filters.category);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const markets = db
+    .query(`SELECT * FROM markets ${where} ORDER BY created_at DESC`)
+    .all(...values) as Market[];
+
+  return markets.map((m) => ({
+    ...m,
+    outcomes: getOutcomesWithProbability(m.id),
+  }));
 }
 
 /**
@@ -151,6 +229,10 @@ export function updateMarket(id: string, update: MarketUpdate): Market | null {
     sets.push("category = ?");
     values.push(update.category);
   }
+  if (update.categoryLabel !== undefined) {
+    sets.push("category_label = ?");
+    values.push(update.categoryLabel);
+  }
   if (update.status !== undefined) {
     sets.push("status = ?");
     values.push(update.status);
@@ -158,6 +240,10 @@ export function updateMarket(id: string, update: MarketUpdate): Market | null {
   if (update.outcome !== undefined) {
     sets.push("outcome = ?");
     values.push(update.outcome);
+  }
+  if (update.resolvedOutcomeId !== undefined) {
+    sets.push("resolved_outcome_id = ?");
+    values.push(update.resolvedOutcomeId);
   }
   if (update.bettingDeadline !== undefined) {
     sets.push("betting_deadline = ?");
@@ -212,7 +298,24 @@ export function updateMarket(id: string, update: MarketUpdate): Market | null {
 }
 
 /**
- * Update pool totals atomically.
+ * Update pool total for a multi-outcome bet.
+ * Increments the market's pool_total_drops.
+ */
+export function addToPoolMultiOutcome(
+  id: string,
+  amountDrops: string
+): void {
+  const db = getDb();
+  db.query(
+    `UPDATE markets SET
+      pool_total_drops = CAST(CAST(pool_total_drops AS INTEGER) + ? AS TEXT),
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id = ?`
+  ).run(amountDrops, id);
+}
+
+/**
+ * Update pool totals atomically (legacy YES/NO).
  */
 export function addToPool(
   id: string,

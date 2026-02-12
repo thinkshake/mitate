@@ -13,7 +13,10 @@ export interface Bet {
   market_id: string;
   user_id: string;
   outcome: BetOutcome;
+  outcome_id: string | null;
   amount_drops: string;
+  weight_score: number;
+  effective_amount_drops: string | null;
   status: BetStatus;
   placed_at: string;
   payment_tx: string | null;
@@ -26,7 +29,10 @@ export interface BetInsert {
   marketId: string;
   userId: string;
   outcome: BetOutcome;
+  outcomeId?: string;
   amountDrops: string;
+  weightScore?: number;
+  effectiveAmountDrops?: string;
   memoJson?: string;
 }
 
@@ -45,16 +51,24 @@ export interface BetUpdate {
 export function createBet(bet: BetInsert): Bet {
   const db = getDb();
   const id = generateId("bet");
-  
+  const weightScore = bet.weightScore ?? 1.0;
+  const effectiveAmountDrops =
+    bet.effectiveAmountDrops ??
+    Math.round(Number(bet.amountDrops) * weightScore).toString();
+
   db.query(
-    `INSERT INTO bets (id, market_id, user_id, outcome, amount_drops, status, memo_json)
-     VALUES (?, ?, ?, ?, ?, 'Pending', ?)`
+    `INSERT INTO bets (id, market_id, user_id, outcome, outcome_id, amount_drops,
+      weight_score, effective_amount_drops, status, memo_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)`
   ).run(
     id,
     bet.marketId,
     bet.userId,
     bet.outcome,
+    bet.outcomeId ?? null,
     bet.amountDrops,
+    weightScore,
+    effectiveAmountDrops,
     bet.memoJson ?? null
   );
 
@@ -115,6 +129,43 @@ export function listConfirmedBetsByOutcome(
      WHERE market_id = ? AND outcome = ? AND status = 'Confirmed'
      ORDER BY placed_at ASC`
   ).all(marketId, outcome) as Bet[];
+}
+
+/**
+ * List confirmed bets for a multi-outcome market by outcome_id.
+ */
+export function listConfirmedBetsByOutcomeId(
+  marketId: string,
+  outcomeId: string
+): Bet[] {
+  const db = getDb();
+  return db.query(
+    `SELECT * FROM bets
+     WHERE market_id = ? AND outcome_id = ? AND status = 'Confirmed'
+     ORDER BY placed_at ASC`
+  ).all(marketId, outcomeId) as Bet[];
+}
+
+/**
+ * Get total effective amount for a market's outcome_id.
+ */
+export function getTotalEffectiveAmount(
+  marketId: string,
+  outcomeId?: string
+): string {
+  const db = getDb();
+  if (outcomeId) {
+    const result = db.query(
+      `SELECT COALESCE(SUM(CAST(effective_amount_drops AS INTEGER)), 0) as total
+       FROM bets WHERE market_id = ? AND outcome_id = ? AND status = 'Confirmed'`
+    ).get(marketId, outcomeId) as { total: number };
+    return result.total.toString();
+  }
+  const result = db.query(
+    `SELECT COALESCE(SUM(CAST(effective_amount_drops AS INTEGER)), 0) as total
+     FROM bets WHERE market_id = ? AND status = 'Confirmed'`
+  ).get(marketId) as { total: number };
+  return result.total.toString();
 }
 
 /**
