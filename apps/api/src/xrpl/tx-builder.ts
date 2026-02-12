@@ -134,7 +134,7 @@ export function buildEscrowCancel(params: {
 
 // ── Payment builders ───────────────────────────────────────────────
 
-/** User → Operator XRP bet payment. */
+/** User -> Operator XRP bet payment (legacy YES/NO). */
 export function buildBetPayment(params: {
   account: string;
   destination: string;
@@ -156,7 +156,29 @@ export function buildBetPayment(params: {
   };
 }
 
-/** Issuer → User IOU mint payment. */
+/** User -> Operator XRP bet payment for multi-outcome markets. */
+export function buildOutcomeBetPayment(params: {
+  account: string;
+  destination: string;
+  amountDrops: string;
+  marketId: string;
+  outcomeId: string;
+}): Payment {
+  return {
+    TransactionType: "Payment",
+    Account: params.account,
+    Destination: params.destination,
+    Amount: params.amountDrops,
+    Memos: [
+      buildMemo("bet", params.marketId, {
+        outcomeId: params.outcomeId,
+        amount: params.amountDrops,
+      }),
+    ],
+  };
+}
+
+/** Issuer -> User IOU mint payment (legacy YES/NO). */
 export function buildMintPayment(params: {
   issuerAddress: string;
   destination: string;
@@ -182,7 +204,34 @@ export function buildMintPayment(params: {
   };
 }
 
-/** Operator → Winner XRP payout payment. */
+/** Issuer -> User IOU mint payment for multi-outcome markets. */
+export function buildOutcomeMintPayment(params: {
+  issuerAddress: string;
+  destination: string;
+  marketId: string;
+  outcomeId: string;
+  currencyCode: string;
+  tokenValue: string;
+}): Payment {
+  return {
+    TransactionType: "Payment",
+    Account: params.issuerAddress,
+    Destination: params.destination,
+    Amount: {
+      currency: params.currencyCode,
+      issuer: params.issuerAddress,
+      value: params.tokenValue,
+    },
+    Memos: [
+      buildMemo("mint", params.marketId, {
+        outcomeId: params.outcomeId,
+        amount: params.tokenValue,
+      }),
+    ],
+  };
+}
+
+/** Operator -> Winner XRP payout payment (legacy YES/NO). */
 export function buildPayoutPayment(params: {
   operatorAddress: string;
   destination: string;
@@ -204,9 +253,31 @@ export function buildPayoutPayment(params: {
   };
 }
 
-// ── TrustSet builder ───────────────────────────────────────────────
+/** Operator -> Winner XRP payout payment for multi-outcome markets. */
+export function buildOutcomePayoutPayment(params: {
+  operatorAddress: string;
+  destination: string;
+  amountDrops: string;
+  marketId: string;
+  outcomeId: string;
+}): Payment {
+  return {
+    TransactionType: "Payment",
+    Account: params.operatorAddress,
+    Destination: params.destination,
+    Amount: params.amountDrops,
+    Memos: [
+      buildMemo("payout", params.marketId, {
+        outcomeId: params.outcomeId,
+        amount: params.amountDrops,
+      }),
+    ],
+  };
+}
 
-/** User sets trust line for outcome IOU. */
+// ── TrustSet builders ──────────────────────────────────────────────
+
+/** User sets trust line for outcome IOU (legacy YES/NO). */
 export function buildTrustSet(params: {
   account: string;
   issuerAddress: string;
@@ -223,6 +294,27 @@ export function buildTrustSet(params: {
       value: params.limitValue,
     },
     Memos: [buildMemo("bet", params.marketId, { outcome: params.outcome })],
+  };
+}
+
+/** User sets trust line for multi-outcome IOU. */
+export function buildOutcomeTrustSet(params: {
+  account: string;
+  issuerAddress: string;
+  marketId: string;
+  outcomeId: string;
+  currencyCode: string;
+  limitValue: string;
+}): TrustSet {
+  return {
+    TransactionType: "TrustSet",
+    Account: params.account,
+    LimitAmount: {
+      currency: params.currencyCode,
+      issuer: params.issuerAddress,
+      value: params.limitValue,
+    },
+    Memos: [buildMemo("bet", params.marketId, { outcomeId: params.outcomeId })],
   };
 }
 

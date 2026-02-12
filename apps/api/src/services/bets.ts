@@ -2,7 +2,14 @@
  * Bets service - business logic for placing and managing bets.
  */
 import { config } from "../config";
-import { buildTrustSet, buildBetPayment, buildMintPayment } from "../xrpl/tx-builder";
+import {
+  buildTrustSet,
+  buildBetPayment,
+  buildMintPayment,
+  buildOutcomeBetPayment,
+  buildOutcomeTrustSet,
+  buildOutcomeMintPayment,
+} from "../xrpl/tx-builder";
 import type { MitateMemoData } from "../xrpl/memo";
 import {
   createBet,
@@ -11,8 +18,10 @@ import {
   listBetsByMarket,
   listBetsByUser,
   listConfirmedBetsByOutcome,
+  listConfirmedBetsByOutcomeId,
   updateBet,
   getTotalBetAmount,
+  getTotalEffectiveAmount,
   type BetInsert,
   type Bet,
   type BetOutcome,
@@ -21,20 +30,33 @@ import {
   getMarketById,
   canPlaceBet,
   addToPool,
+  addToPoolMultiOutcome,
 } from "../db/models/markets";
 import { getEscrowByMarket, addToEscrow } from "../db/models/escrows";
+import {
+  getOutcomeById,
+  addToOutcomeTotal,
+  getOutcomesWithProbability,
+  type Outcome,
+} from "../db/models/outcomes";
+import {
+  getAttributesForUser,
+  calculateWeightScore,
+} from "../db/models/user-attributes";
 
 // ── Types ──────────────────────────────────────────────────────────
 
 export interface PlaceBetInput {
   marketId: string;
-  outcome: BetOutcome;
+  outcomeId: string;
   amountDrops: string;
   userAddress: string;
 }
 
 export interface PlaceBetResult {
   bet: Bet;
+  weightScore: number;
+  effectiveAmountDrops: string;
   trustSetTx?: unknown;
   paymentTx: unknown;
 }
@@ -47,10 +69,11 @@ export interface ConfirmBetInput {
 // ── Service Functions ──────────────────────────────────────────────
 
 /**
- * Create a bet intent.
+ * Create a bet intent for a multi-outcome market.
  * 1. Validate market is open and deadline not passed
- * 2. Create pending bet record
- * 3. Return TrustSet and Payment tx payloads for signing
+ * 2. Look up user weight from attributes
+ * 3. Create pending bet record with weight and effective amount
+ * 4. Return TrustSet and Payment tx payloads for signing
  */
 export function placeBet(input: PlaceBetInput): PlaceBetResult {
   // Validate amount
@@ -68,12 +91,26 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
     throw new Error("Market is not accepting bets");
   }
 
+  // Validate outcome belongs to this market
+  const outcome = getOutcomeById(input.outcomeId);
+  if (!outcome) {
+    throw new Error("Outcome not found");
+  }
+  if (outcome.market_id !== input.marketId) {
+    throw new Error("Outcome does not belong to this market");
+  }
+
+  // Calculate weight score from user attributes
+  const attributes = getAttributesForUser(input.userAddress);
+  const weightScore = calculateWeightScore(attributes);
+  const effectiveAmountDrops = Math.round(Number(input.amountDrops) * weightScore).toString();
+
   // Create pending bet
   const memo: MitateMemoData = {
     v: 1,
     type: "bet",
     marketId: input.marketId,
-    outcome: input.outcome,
+    outcomeId: input.outcomeId,
     amount: input.amountDrops,
     timestamp: new Date().toISOString(),
   };
@@ -81,31 +118,39 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
   const bet = createBet({
     marketId: input.marketId,
     userId: input.userAddress,
-    outcome: input.outcome,
+    outcome: "YES", // Legacy field - kept for backward compat
+    outcomeId: input.outcomeId,
     amountDrops: input.amountDrops,
+    weightScore,
+    effectiveAmountDrops,
     memoJson: JSON.stringify(memo),
   });
 
-  // Build TrustSet tx (user sets trust line for outcome tokens)
-  const trustSetTx = buildTrustSet({
-    account: input.userAddress,
-    issuerAddress: config.issuerAddress,
-    marketId: input.marketId,
-    outcome: input.outcome,
-    limitValue: input.amountDrops, // Trust limit = bet amount
-  });
+  // Build TrustSet tx for outcome token
+  const trustSetTx = outcome.currency_code
+    ? buildOutcomeTrustSet({
+        account: input.userAddress,
+        issuerAddress: config.issuerAddress,
+        marketId: input.marketId,
+        outcomeId: input.outcomeId,
+        currencyCode: outcome.currency_code,
+        limitValue: effectiveAmountDrops,
+      })
+    : undefined;
 
   // Build Payment tx (user pays XRP to operator)
-  const paymentTx = buildBetPayment({
+  const paymentTx = buildOutcomeBetPayment({
     account: input.userAddress,
     destination: config.operatorAddress,
     amountDrops: input.amountDrops,
     marketId: input.marketId,
-    outcome: input.outcome,
+    outcomeId: input.outcomeId,
   });
 
   return {
     bet,
+    weightScore,
+    effectiveAmountDrops,
     trustSetTx,
     paymentTx,
   };
@@ -114,7 +159,7 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
 /**
  * Confirm a bet after payment is validated on ledger.
  * 1. Verify payment tx on XRPL
- * 2. Update pool totals
+ * 2. Update pool totals (market + outcome)
  * 3. Queue token minting (via worker)
  */
 export async function confirmBet(input: ConfirmBetInput): Promise<Bet> {
@@ -137,17 +182,20 @@ export async function confirmBet(input: ConfirmBetInput): Promise<Bet> {
     throw new Error("Market not found");
   }
 
-  // Note: In production, we'd verify the tx on XRPL here
-  // For now, trust the client-provided hash and let the worker reconcile
-
   // Update bet with payment tx
   updateBet(bet.id, {
     status: "Confirmed",
     paymentTx: input.paymentTxHash,
   });
 
-  // Update market pool totals
-  addToPool(market.id, bet.outcome as BetOutcome, bet.amount_drops);
+  // Update market pool total
+  const effectiveAmount = bet.effective_amount_drops ?? bet.amount_drops;
+  addToPoolMultiOutcome(market.id, effectiveAmount);
+
+  // Update outcome total
+  if (bet.outcome_id) {
+    addToOutcomeTotal(bet.outcome_id, effectiveAmount);
+  }
 
   // Update escrow tracking (if exists)
   const escrow = getEscrowByMarket(market.id);
@@ -168,7 +216,22 @@ export function buildMintTx(betId: string): unknown | null {
     return null;
   }
 
-  // Payment from issuer to user (minting IOUs)
+  // Multi-outcome: use outcome currency code
+  if (bet.outcome_id) {
+    const outcome = getOutcomeById(bet.outcome_id);
+    if (outcome?.currency_code) {
+      return buildOutcomeMintPayment({
+        issuerAddress: config.issuerAddress,
+        destination: bet.user_id,
+        marketId: bet.market_id,
+        outcomeId: bet.outcome_id,
+        currencyCode: outcome.currency_code,
+        tokenValue: bet.effective_amount_drops ?? bet.amount_drops,
+      });
+    }
+  }
+
+  // Legacy YES/NO fallback
   return buildMintPayment({
     issuerAddress: config.issuerAddress,
     destination: bet.user_id,
@@ -217,61 +280,88 @@ export function getBetsForUser(userId: string): Bet[] {
 }
 
 /**
- * Calculate potential payout for a bet.
+ * Calculate potential payout for a multi-outcome bet.
+ * Uses effective amounts (with weight applied).
  */
 export function calculatePotentialPayout(
   marketId: string,
-  outcome: BetOutcome,
-  amountDrops: string
-): string {
+  outcomeId: string,
+  amountDrops: string,
+  userAddress?: string
+): { potentialPayout: string; weightScore: number; effectiveAmount: string } {
   const market = getMarketById(marketId);
   if (!market) {
-    return "0";
+    return { potentialPayout: "0", weightScore: 1.0, effectiveAmount: amountDrops };
   }
 
-  const totalPool = BigInt(market.pool_total_drops);
-  const outcomeTotal = BigInt(
-    outcome === "YES" ? market.yes_total_drops : market.no_total_drops
-  );
-  const betAmount = BigInt(amountDrops);
+  // Calculate weight
+  let weightScore = 1.0;
+  if (userAddress) {
+    const attributes = getAttributesForUser(userAddress);
+    weightScore = calculateWeightScore(attributes);
+  }
+  const effectiveAmount = Math.round(Number(amountDrops) * weightScore).toString();
 
-  // Add the new bet to the pool for calculation
-  const newTotal = totalPool + betAmount;
-  const newOutcomeTotal = outcomeTotal + betAmount;
+  // Get outcomes for probability calculation
+  const outcomes = getOutcomesWithProbability(marketId);
+  const targetOutcome = outcomes.find((o) => o.id === outcomeId);
+  if (!targetOutcome) {
+    return { potentialPayout: "0", weightScore, effectiveAmount };
+  }
+
+  // Calculate pool-based payout
+  const totalPool = outcomes.reduce(
+    (sum, o) => sum + BigInt(o.total_amount_drops),
+    0n
+  );
+  const outcomeTotal = BigInt(targetOutcome.total_amount_drops);
+  const betEffective = BigInt(effectiveAmount);
+
+  const newTotal = totalPool + betEffective;
+  const newOutcomeTotal = outcomeTotal + betEffective;
 
   if (newOutcomeTotal === 0n) {
-    return newTotal.toString();
+    return { potentialPayout: newTotal.toString(), weightScore, effectiveAmount };
   }
 
-  // Parimutuel payout = totalPool * betAmount / outcomeTotal
-  const payout = (newTotal * betAmount) / newOutcomeTotal;
-  return payout.toString();
+  const payout = (newTotal * betEffective) / newOutcomeTotal;
+  return { potentialPayout: payout.toString(), weightScore, effectiveAmount };
 }
 
 /**
- * Calculate actual payout for a resolved market.
+ * Calculate actual payout for a resolved market (multi-outcome).
  */
 export function calculateActualPayout(bet: Bet): string {
   const market = getMarketById(bet.market_id);
-  if (!market || market.status !== "Resolved" || !market.outcome) {
+  if (!market || market.status !== "Resolved") {
     return "0";
   }
 
-  // Losing bets get nothing
-  if (bet.outcome !== market.outcome) {
+  // Check if this bet's outcome won
+  const resolvedOutcomeId = market.resolved_outcome_id;
+  if (!resolvedOutcomeId) {
+    // Legacy YES/NO resolution
+    if (!market.outcome || bet.outcome !== market.outcome) {
+      return "0";
+    }
+    const totalPool = BigInt(market.pool_total_drops);
+    const winningTotal = BigInt(
+      market.outcome === "YES" ? market.yes_total_drops : market.no_total_drops
+    );
+    const betAmount = BigInt(bet.amount_drops);
+    if (winningTotal === 0n) return "0";
+    return ((totalPool * betAmount) / winningTotal).toString();
+  }
+
+  // Multi-outcome resolution
+  if (bet.outcome_id !== resolvedOutcomeId) {
     return "0";
   }
 
   const totalPool = BigInt(market.pool_total_drops);
-  const winningTotal = BigInt(
-    market.outcome === "YES" ? market.yes_total_drops : market.no_total_drops
-  );
-  const betAmount = BigInt(bet.amount_drops);
+  const winningTotal = BigInt(getTotalEffectiveAmount(market.id, resolvedOutcomeId));
+  const betEffective = BigInt(bet.effective_amount_drops ?? bet.amount_drops);
 
-  if (winningTotal === 0n) {
-    return "0";
-  }
-
-  const payout = (totalPool * betAmount) / winningTotal;
-  return payout.toString();
+  if (winningTotal === 0n) return "0";
+  return ((totalPool * betEffective) / winningTotal).toString();
 }

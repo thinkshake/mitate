@@ -2,19 +2,23 @@
  * Market service - business logic for market creation and management.
  */
 import { config } from "../config";
-import { createXrplClient } from "../xrpl/client";
 import { buildEscrowCreate } from "../xrpl/tx-builder";
 import type { MitateMemoData } from "../xrpl/memo";
 import {
   createMarket,
+  createMarketWithOutcomes,
   getMarketById,
+  getMarketWithOutcomes,
   listMarkets,
+  listMarketsWithOutcomes,
   listOpenMarkets,
   updateMarket,
   getMarketsToClose,
   type MarketInsert,
   type MarketUpdate,
   type Market,
+  type MarketWithOutcomes,
+  type MarketStatus,
 } from "../db/models/markets";
 import { createEscrow } from "../db/models/escrows";
 
@@ -24,20 +28,22 @@ export interface CreateMarketInput {
   title: string;
   description: string;
   category?: string;
+  categoryLabel?: string;
   bettingDeadline: string;
   resolutionTime?: string;
+  outcomes?: { label: string }[];
 }
 
 export interface CreateMarketResult {
-  market: Market;
+  market: MarketWithOutcomes;
   escrowTx?: unknown;
 }
 
 // ── Service Functions ──────────────────────────────────────────────
 
 /**
- * Create a new market.
- * 1. Create DB record in Draft status
+ * Create a new market with outcomes.
+ * 1. Create DB record in Draft status with outcomes
  * 2. Build XRPL EscrowCreate tx for initial pool
  * 3. Return market and tx payload for signing
  */
@@ -51,24 +57,30 @@ export async function createNewMarket(
     throw new Error("Betting deadline must be in the future");
   }
 
-  // Create market record
-  const marketData: MarketInsert = {
+  // Validate outcomes
+  const outcomes = input.outcomes ?? [{ label: "YES" }, { label: "NO" }];
+  if (outcomes.length < 2 || outcomes.length > 5) {
+    throw new Error("Markets must have 2-5 outcomes");
+  }
+
+  // Create market record with outcomes
+  const marketData = {
     title: input.title,
     description: input.description,
     category: input.category,
+    categoryLabel: input.categoryLabel,
     createdBy: creatorAddress,
     bettingDeadline: input.bettingDeadline,
     resolutionTime: input.resolutionTime,
     issuerAddress: config.issuerAddress,
     operatorAddress: config.operatorAddress,
+    outcomes,
   };
 
-  const market = createMarket(marketData);
+  const market = createMarketWithOutcomes(marketData);
 
   // Build initial escrow creation tx
-  // Escrow with 1 drop as placeholder (pool will grow with bets)
-  // Note: XRPL uses "Ripple Epoch" which is seconds since 2000-01-01
-  const rippleEpochOffset = 946684800; // Unix timestamp of 2000-01-01
+  const rippleEpochOffset = 946684800;
   const cancelAfter = Math.floor(deadline.getTime() / 1000) - rippleEpochOffset;
 
   const escrowTx = buildEscrowCreate({
@@ -121,20 +133,33 @@ export function confirmMarketCreation(
 }
 
 /**
- * Get a single market by ID.
+ * Get a single market by ID (without outcomes).
  */
 export function getMarket(id: string): Market | null {
   return getMarketById(id);
 }
 
 /**
- * List all markets.
+ * Get a single market with outcomes and probabilities.
  */
-export function getMarkets(status?: string): Market[] {
+export function getMarketFull(id: string): MarketWithOutcomes | null {
+  return getMarketWithOutcomes(id);
+}
+
+/**
+ * List all markets with outcomes.
+ */
+export function getMarkets(status?: string, category?: string): MarketWithOutcomes[] {
+  const filters: { status?: MarketStatus; category?: string } = {};
+
   if (status && ["Draft", "Open", "Closed", "Resolved", "Paid", "Canceled", "Stalled"].includes(status)) {
-    return listMarkets(status as Market["status"]);
+    filters.status = status as MarketStatus;
   }
-  return listMarkets();
+  if (category) {
+    filters.category = category;
+  }
+
+  return listMarketsWithOutcomes(Object.keys(filters).length > 0 ? filters : undefined);
 }
 
 /**
@@ -149,7 +174,7 @@ export function getOpenMarketsForBetting(): Market[] {
  */
 export function updateMarketMetadata(
   id: string,
-  update: Partial<Pick<MarketUpdate, "title" | "description" | "category">>
+  update: Partial<Pick<MarketUpdate, "title" | "description" | "category" | "categoryLabel">>
 ): Market | null {
   const market = getMarketById(id);
   if (!market) {
@@ -180,7 +205,7 @@ export function closeExpiredMarkets(): Market[] {
 }
 
 /**
- * Calculate odds for a market.
+ * Calculate odds for a market (legacy YES/NO).
  */
 export function calculateOdds(market: Market): { yes: number; no: number } {
   const yesTotal = BigInt(market.yes_total_drops);
@@ -198,11 +223,9 @@ export function calculateOdds(market: Market): { yes: number; no: number } {
 }
 
 /**
- * Calculate implied price from odds.
+ * Calculate implied price from odds (legacy YES/NO).
  */
 export function calculatePrice(market: Market): { yes: number; no: number } {
   const odds = calculateOdds(market);
-  // In parimutuel, implied price = 1 / (1 / odds) = odds
-  // But for betting, we show what you'd get per XRP bet
   return odds;
 }

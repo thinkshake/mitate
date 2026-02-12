@@ -9,6 +9,8 @@ import marketsRoutes from "./routes/markets";
 import betsRoutes from "./routes/bets";
 import offersRoutes from "./routes/offers";
 import resolveRoutes from "./routes/resolve";
+import usersRoutes from "./routes/users";
+import categoriesRoutes from "./routes/categories";
 
 const app = new Hono();
 
@@ -29,6 +31,8 @@ app.route("/api/markets", marketsRoutes);
 app.route("/api", betsRoutes);
 app.route("/api", offersRoutes);
 app.route("/api", resolveRoutes);
+app.route("/api/users", usersRoutes);
+app.route("/api/categories", categoriesRoutes);
 
 // Root endpoint
 app.get("/", (c) => {

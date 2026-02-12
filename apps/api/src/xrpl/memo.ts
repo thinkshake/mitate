@@ -25,6 +25,7 @@ export interface MitateMemoData {
   type: MitateMemoType;
   marketId: string;
   outcome?: "YES" | "NO";
+  outcomeId?: string;
   amount?: string;
   creator?: string;
   timestamp: string;
