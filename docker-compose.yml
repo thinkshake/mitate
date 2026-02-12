@@ -21,7 +21,7 @@ services:
       - api-data:/data
       - ./apps/api/src:/app/src:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3001/health'); if (!r.ok) process.exit(1)"]
       interval: 30s
       timeout: 10s
       retries: 3

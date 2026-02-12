@@ -15,8 +15,9 @@ RUN \
 
 # Build
 FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN rm -rf node_modules
+COPY --from=deps /app/node_modules ./node_modules
 
 # Set build-time env vars
 ARG NEXT_PUBLIC_API_URL
