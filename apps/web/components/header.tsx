@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@/contexts/WalletContext";
+import { formatXrp } from "@/lib/api";
 
 export function Header() {
   const wallet = useWallet();
@@ -19,42 +20,42 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">M</span>
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
-            <span className="font-bold text-xl text-black">MITATE</span>
+            <span className="font-bold text-xl">MITATE</span>
           </Link>
 
           {/* Navigation - Desktop */}
           <nav className="hidden md:flex items-center space-x-6">
             <Link
               href="/markets"
-              className="text-gray-600 hover:text-black transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Markets
+              マーケット
             </Link>
             <Link
               href="/portfolio"
-              className="text-gray-600 hover:text-black transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Portfolio
+              マイページ
             </Link>
             <Link
               href="/activity"
-              className="text-gray-600 hover:text-black transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Activity
+              アクティビティ
             </Link>
             <Link
               href="/learn"
-              className="text-gray-600 hover:text-black transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Learn
+              使い方
             </Link>
           </nav>
 
@@ -62,18 +63,23 @@ export function Header() {
           {wallet.connected ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="bg-green-600 hover:bg-green-700 text-white">
-                  <div className="w-2 h-2 bg-green-300 rounded-full mr-2" />
-                  {formatAddress(wallet.address || "")}
+                <Button variant="outline" className="gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full" />
+                  <span>{formatAddress(wallet.address || "")}</span>
+                  {wallet.balance && (
+                    <span className="text-xs text-muted-foreground">
+                      {formatXrp(wallet.balance)}
+                    </span>
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem className="text-gray-500 text-xs">
+                <DropdownMenuItem className="text-muted-foreground text-xs">
                   GemWallet • {wallet.network}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/portfolio">My Portfolio</Link>
+                  <Link href="/portfolio">マイページ</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <a
@@ -81,15 +87,15 @@ export function Header() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    View on XRPL Explorer →
+                    XRPL Explorerで見る →
                   </a>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={wallet.disconnect}
-                  className="text-red-600"
+                  className="text-destructive"
                 >
-                  Disconnect
+                  切断
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -97,7 +103,6 @@ export function Header() {
             <Button
               onClick={wallet.connect}
               disabled={wallet.loading}
-              className="bg-black hover:bg-gray-800 text-white"
             >
               {wallet.loading ? (
                 <>
@@ -120,7 +125,7 @@ export function Header() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Connecting...
+                  接続中...
                 </>
               ) : !wallet.gemWalletInstalled ? (
                 <a
@@ -129,13 +134,10 @@ export function Header() {
                   rel="noopener noreferrer"
                   className="flex items-center"
                 >
-                  Install GemWallet
+                  GemWalletをインストール
                 </a>
               ) : (
-                <>
-                  <span className="mr-2">💎</span>
-                  Connect GemWallet
-                </>
+                "ウォレット接続"
               )}
             </Button>
           )}
@@ -144,38 +146,38 @@ export function Header() {
 
       {/* Error Toast */}
       {wallet.error && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600">
+        <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-sm text-destructive">
           {wallet.error}
         </div>
       )}
 
       {/* Mobile Navigation */}
-      <nav className="md:hidden border-t border-gray-200">
+      <nav className="md:hidden border-t border-border">
         <div className="container mx-auto px-4">
           <div className="flex justify-around py-2">
             <Link
               href="/markets"
-              className="text-sm text-gray-600 hover:text-black transition-colors py-2"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
             >
-              Markets
+              マーケット
             </Link>
             <Link
               href="/portfolio"
-              className="text-sm text-gray-600 hover:text-black transition-colors py-2"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
             >
-              Portfolio
+              マイページ
             </Link>
             <Link
               href="/activity"
-              className="text-sm text-gray-600 hover:text-black transition-colors py-2"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
             >
-              Activity
+              履歴
             </Link>
             <Link
               href="/learn"
-              className="text-sm text-gray-600 hover:text-black transition-colors py-2"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
             >
-              Learn
+              使い方
             </Link>
           </div>
         </div>

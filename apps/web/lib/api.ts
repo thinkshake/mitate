@@ -6,37 +6,62 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 // ── Types ──────────────────────────────────────────────────────────
 
+export interface Outcome {
+  id: string;
+  label: string;
+  probability: number;
+  totalAmountDrops: string;
+}
+
 export interface Market {
   id: string;
   title: string;
   description: string;
-  category: string | null;
-  status: "Draft" | "Open" | "Closed" | "Resolved" | "Paid" | "Canceled" | "Stalled";
-  outcome: "YES" | "NO" | null;
+  category: string;
+  categoryLabel: string;
+  status: "pending" | "open" | "closed" | "resolved";
   bettingDeadline: string;
   resolutionTime: string | null;
-  issuerAddress: string;
-  operatorAddress: string;
-  poolTotalDrops: string;
-  yesTotalDrops: string;
-  noTotalDrops: string;
-  yes?: number;
-  no?: number;
-  xrplEscrowSequence: number | null;
+  totalPoolDrops: string;
+  outcomes: Outcome[];
+  resolvedOutcomeId: string | null;
+  escrowTxHash: string | null;
+  escrowSequence: number | null;
+  issuerAddress?: string;
+  createdAt: string;
 }
 
 export interface Bet {
   id: string;
   marketId: string;
-  marketTitle?: string;
-  userId?: string;
-  outcome: "YES" | "NO";
+  outcomeId: string;
+  outcomeLabel: string;
+  bettorAddress: string;
   amountDrops: string;
-  status: "Pending" | "Confirmed" | "Failed" | "Refunded";
-  placedAt: string;
-  paymentTx: string | null;
-  mintTx: string | null;
-  payout: string | null;
+  weightScore: number;
+  effectiveAmountDrops: string;
+  txHash: string | null;
+  createdAt: string;
+}
+
+export interface UserBet extends Bet {
+  marketTitle: string;
+  currentProbability: number;
+  status: "open" | "closed";
+}
+
+export interface Attribute {
+  id: string;
+  type: string;
+  typeLabel: string;
+  label: string;
+  weight: number;
+  verifiedAt: string;
+}
+
+export interface Category {
+  value: string;
+  label: string;
 }
 
 export interface Payout {
@@ -84,103 +109,144 @@ async function apiFetch<T>(
     throw new Error(error?.message || `API error: ${res.status}`);
   }
 
-  return json.data as T;
+  return (json.data ?? json) as T;
 }
 
 // ── Markets ────────────────────────────────────────────────────────
 
-export async function getMarkets(status?: string): Promise<Market[]> {
-  const query = status ? `?status=${status}` : "";
-  return apiFetch<Market[]>(`/markets${query}`);
+export async function getMarkets(params?: {
+  status?: string;
+  category?: string;
+}): Promise<Market[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.category && params.category !== "all")
+    searchParams.set("category", params.category);
+
+  const query = searchParams.toString();
+  const path = query ? `/markets?${query}` : "/markets";
+  const result = await apiFetch<{ markets: Market[] } | Market[]>(path);
+  return Array.isArray(result) ? result : result.markets;
 }
 
 export async function getOpenMarkets(): Promise<Market[]> {
-  return apiFetch<Market[]>("/markets/open");
+  return getMarkets({ status: "open" });
 }
 
 export async function getMarket(id: string): Promise<Market> {
-  return apiFetch<Market>(`/markets/${id}`);
+  const result = await apiFetch<Market | { market: Market }>(`/markets/${id}`);
+  return "market" in result ? result.market : result;
 }
 
 // ── Bets ───────────────────────────────────────────────────────────
 
 export interface PlaceBetResponse {
-  betId: string;
-  status: string;
-  potentialPayout: string;
-  trustSet: unknown;
-  payment: unknown;
+  bet: Bet;
+  weightScore: number;
+  effectiveAmountDrops: string;
+  unsignedTx: unknown;
 }
 
 export async function placeBet(
   marketId: string,
-  outcome: "YES" | "NO",
+  outcomeId: string,
   amountDrops: string,
-  userAddress: string
+  bettorAddress: string,
 ): Promise<PlaceBetResponse> {
   return apiFetch<PlaceBetResponse>(`/markets/${marketId}/bets`, {
     method: "POST",
-    body: JSON.stringify({ outcome, amountDrops, userAddress }),
+    body: JSON.stringify({ outcomeId, amountDrops, bettorAddress }),
   });
 }
 
 export async function confirmBet(
   marketId: string,
   betId: string,
-  paymentTx: string
+  txHash: string,
 ): Promise<{ betId: string; status: string }> {
-  return apiFetch(`/markets/${marketId}/bets/confirm?betId=${betId}`, {
+  return apiFetch(`/markets/${marketId}/bets/${betId}/confirm`, {
     method: "POST",
-    body: JSON.stringify({ paymentTx }),
+    body: JSON.stringify({ txHash }),
   });
 }
 
-export async function getBetsForMarket(marketId: string): Promise<Bet[]> {
-  return apiFetch<Bet[]>(`/markets/${marketId}/bets`);
-}
-
-export async function getBetsForUser(address: string): Promise<Bet[]> {
-  return apiFetch<Bet[]>(`/users/${address}/bets`);
+export async function getBetsForMarket(
+  marketId: string,
+  limit?: number,
+): Promise<{ bets: Bet[] }> {
+  const query = limit ? `?limit=${limit}` : "";
+  return apiFetch<{ bets: Bet[] }>(`/markets/${marketId}/bets${query}`);
 }
 
 export interface BetPreview {
-  marketId: string;
-  outcome: string;
-  amountDrops: string;
   potentialPayout: string;
   impliedOdds: string;
-  potentialReturn: string;
+  weightScore: number;
+  effectiveAmount: string;
+  newProbability: number;
 }
 
 export async function previewBet(
   marketId: string,
-  outcome: "YES" | "NO",
-  amountDrops: string
+  outcomeId: string,
+  amountDrops: string,
+  bettorAddress?: string,
 ): Promise<BetPreview> {
+  const params = new URLSearchParams({
+    outcomeId,
+    amountDrops,
+  });
+  if (bettorAddress) params.set("bettorAddress", bettorAddress);
+
   return apiFetch<BetPreview>(
-    `/markets/${marketId}/bets/preview?outcome=${outcome}&amountDrops=${amountDrops}`
+    `/markets/${marketId}/preview?${params.toString()}`
   );
 }
 
-// ── Trades ─────────────────────────────────────────────────────────
+// ── User Attributes ────────────────────────────────────────────────
 
-export interface CreateOfferResponse {
-  offer: unknown;
+export async function fetchUserAttributes(
+  address: string,
+): Promise<{ address: string; weightScore: number; attributes: Attribute[] }> {
+  return apiFetch(`/users/${address}/attributes`);
 }
 
-export async function createOffer(
-  marketId: string,
-  outcome: "YES" | "NO",
-  side: "buy" | "sell",
-  tokenAmount: string,
-  xrpAmountDrops: string,
-  userAddress: string
-): Promise<CreateOfferResponse> {
-  return apiFetch<CreateOfferResponse>(`/markets/${marketId}/offers`, {
+export async function addUserAttribute(
+  address: string,
+  attribute: { type: string; label: string; weight: number },
+): Promise<Attribute> {
+  return apiFetch<Attribute>(`/users/${address}/attributes`, {
     method: "POST",
-    body: JSON.stringify({ outcome, side, tokenAmount, xrpAmountDrops, userAddress }),
+    body: JSON.stringify(attribute),
   });
 }
+
+export async function removeUserAttribute(
+  address: string,
+  attributeId: string,
+): Promise<void> {
+  await apiFetch(`/users/${address}/attributes/${attributeId}`, {
+    method: "DELETE",
+  });
+}
+
+// ── User Bets (Portfolio) ──────────────────────────────────────────
+
+export async function fetchUserBets(
+  address: string,
+  status?: string,
+): Promise<{ bets: UserBet[]; totalBets: number; totalAmountDrops: string }> {
+  const query = status ? `?status=${status}` : "";
+  return apiFetch(`/users/${address}/bets${query}`);
+}
+
+// ── Categories ─────────────────────────────────────────────────────
+
+export async function fetchCategories(): Promise<{ categories: Category[] }> {
+  return apiFetch<{ categories: Category[] }>("/categories");
+}
+
+// ── Trades ─────────────────────────────────────────────────────────
 
 export interface TradesResponse {
   trades: Trade[];
@@ -190,7 +256,9 @@ export interface TradesResponse {
   };
 }
 
-export async function getTradesForMarket(marketId: string): Promise<TradesResponse> {
+export async function getTradesForMarket(
+  marketId: string,
+): Promise<TradesResponse> {
   return apiFetch<TradesResponse>(`/markets/${marketId}/trades`);
 }
 
@@ -216,7 +284,7 @@ export async function getPayoutsForUser(address: string): Promise<Payout[]> {
 
 // ── Formatting Helpers ─────────────────────────────────────────────
 
-export function dropsToXrp(drops: string): number {
+export function dropsToXrp(drops: string | number): number {
   return Number(drops) / 1_000_000;
 }
 
@@ -224,27 +292,15 @@ export function xrpToDrops(xrp: number): string {
   return Math.floor(xrp * 1_000_000).toString();
 }
 
-export function formatXrp(drops: string): string {
+export function formatXrp(drops: string | number): string {
   const xrp = dropsToXrp(drops);
-  if (xrp >= 1000) {
-    return `${(xrp / 1000).toFixed(1)}K XRP`;
-  }
-  return `${xrp.toFixed(2)} XRP`;
+  return `${xrp.toLocaleString("ja-JP")} XRP`;
 }
 
-export function formatOdds(market: Market): { yes: number; no: number } {
-  const yesTotal = BigInt(market.yesTotalDrops);
-  const noTotal = BigInt(market.noTotalDrops);
-  const total = yesTotal + noTotal;
-
-  if (total === BigInt(0)) {
-    return { yes: 50, no: 50 };
-  }
-
-  return {
-    yes: Math.round((Number(yesTotal) / Number(total)) * 100),
-    no: Math.round((Number(noTotal) / Number(total)) * 100),
-  };
+export function formatXrpCompact(drops: string | number): string {
+  const xrp = dropsToXrp(drops);
+  if (xrp >= 1000) return `${(xrp / 1000).toFixed(1)}K XRP`;
+  return `${xrp.toFixed(0)} XRP`;
 }
 
 export function formatDeadline(deadline: string): string {
@@ -253,19 +309,19 @@ export function formatDeadline(deadline: string): string {
   const diff = date.getTime() - now.getTime();
 
   if (diff <= 0) {
-    return "Closed";
+    return "締切";
   }
 
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
   if (days > 0) {
-    return `${days}d ${hours}h left`;
+    return `残り${days}日${hours}時間`;
   }
   if (hours > 0) {
-    return `${hours}h left`;
+    return `残り${hours}時間`;
   }
 
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `${minutes}m left`;
+  return `残り${minutes}分`;
 }

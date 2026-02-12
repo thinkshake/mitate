@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   getMarkets,
-  getOpenMarkets,
   getMarket,
   type Market,
 } from "@/lib/api";
@@ -17,29 +16,32 @@ export interface UseMarketsResult {
   refetch: () => void;
 }
 
-export function useMarkets(status?: string): UseMarketsResult {
+export function useMarkets(params?: {
+  status?: string;
+  category?: string;
+}): UseMarketsResult {
   const [markets, setMarkets] = useState<Market[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = status === "open" ? await getOpenMarkets() : await getMarkets(status);
+      const data = await getMarkets(params);
       setMarkets(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load markets");
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [params?.status, params?.category]);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    fetchData();
+  }, [fetchData]);
 
-  return { markets, loading, error, refetch: fetch };
+  return { markets, loading, error, refetch: fetchData };
 }
 
 // ── useMarket ──────────────────────────────────────────────────────
@@ -56,7 +58,7 @@ export function useMarket(id: string | null): UseMarketResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!id) {
       setMarket(null);
       setLoading(false);
@@ -76,8 +78,8 @@ export function useMarket(id: string | null): UseMarketResult {
   }, [id]);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    fetchData();
+  }, [fetchData]);
 
-  return { market, loading, error, refetch: fetch };
+  return { market, loading, error, refetch: fetchData };
 }

@@ -5,7 +5,6 @@ import {
   isInstalled,
   getAddress,
   getNetwork,
-  signTransaction,
   submitTransaction,
 } from "@gemwallet/api";
 
@@ -15,6 +14,7 @@ export interface WalletState {
   connected: boolean;
   address: string | null;
   network: string | null;
+  balance: string | null; // XRP balance in drops
   loading: boolean;
   error: string | null;
   gemWalletInstalled: boolean;
@@ -24,6 +24,7 @@ export interface WalletContextType extends WalletState {
   connect: () => Promise<void>;
   disconnect: () => void;
   signAndSubmitTransaction: (tx: unknown) => Promise<{ hash: string } | null>;
+  refreshBalance: () => Promise<void>;
 }
 
 // ── Context ────────────────────────────────────────────────────────
@@ -32,15 +33,40 @@ const WalletContext = createContext<WalletContextType | null>(null);
 
 // ── Provider ───────────────────────────────────────────────────────
 
+const XRPL_TESTNET_URL = "https://s.altnet.rippletest.net:51234";
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>({
     connected: false,
     address: null,
     network: null,
+    balance: null,
     loading: false,
     error: null,
     gemWalletInstalled: false,
   });
+
+  const refreshBalance = useCallback(async () => {
+    const address = state.address;
+    if (!address) return;
+
+    try {
+      const response = await fetch(XRPL_TESTNET_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: "account_info",
+          params: [{ account: address, ledger_index: "validated" }],
+        }),
+      });
+      const data = await response.json();
+      if (data.result?.account_data?.Balance) {
+        setState((s) => ({ ...s, balance: data.result.account_data.Balance }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch balance:", err);
+    }
+  }, [state.address]);
 
   // Check if GemWallet is installed on mount
   useEffect(() => {
@@ -80,6 +106,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     checkGemWallet();
   }, []);
 
+  // Fetch balance when address changes
+  useEffect(() => {
+    if (state.address) {
+      refreshBalance();
+    }
+  }, [state.address, refreshBalance]);
+
   const connect = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
 
@@ -102,7 +135,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const networkResponse = await getNetwork();
       const network = networkResponse.result?.network || "Testnet";
 
-      // Verify we're on testnet (GemWallet uses enum, but we check string representation)
+      // Verify we're on testnet
       const networkStr = String(network).toLowerCase();
       if (!networkStr.includes("testnet") && !networkStr.includes("test")) {
         throw new Error(`Please switch GemWallet to Testnet. Current: ${network}`);
@@ -115,6 +148,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         connected: true,
         address,
         network,
+        balance: null,
         loading: false,
         error: null,
         gemWalletInstalled: true,
@@ -135,6 +169,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       connected: false,
       address: null,
       network: null,
+      balance: null,
       error: null,
     }));
   }, []);
@@ -146,12 +181,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        // Sign and submit via GemWallet
         const response = await submitTransaction({
           transaction: tx as any,
         });
 
         if (response.result?.hash) {
+          // Refresh balance after transaction
+          setTimeout(() => refreshBalance(), 3000);
           return { hash: response.result.hash };
         }
 
@@ -161,7 +197,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    [state.connected]
+    [state.connected, refreshBalance]
   );
 
   const value: WalletContextType = {
@@ -169,6 +205,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     connect,
     disconnect,
     signAndSubmitTransaction,
+    refreshBalance,
   };
 
   return (
