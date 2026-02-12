@@ -10,8 +10,9 @@ RUN bun install --frozen-lockfile
 
 # Build
 FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN rm -rf node_modules
+COPY --from=deps /app/node_modules ./node_modules
 RUN bun run build
 
 # Production
