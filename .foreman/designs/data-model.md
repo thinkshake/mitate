@@ -1,199 +1,128 @@
-# MITATE Data Model (SQLite)
+# Data Model Changes
 
-## Overview
-SQLite is the system of record for market lifecycle, XRPL transaction mapping, and payouts. The database is append-friendly and reconciles with XRPL ledger events.
-
-## Tables
-
-### users
-```sql
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
-  wallet_address TEXT NOT NULL UNIQUE,
-  provider TEXT NOT NULL, -- xaman|gemwallet|manual
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-```
+## Current Schema (apps/api)
 
 ### markets
 ```sql
-CREATE TABLE markets (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  category TEXT,
-  status TEXT NOT NULL, -- Draft|Open|Closed|Resolved|Paid|Canceled|Stalled
-  outcome TEXT, -- YES|NO when resolved
-  created_by TEXT NOT NULL,
-  betting_deadline TEXT NOT NULL,
-  resolution_time TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  xrpl_market_tx TEXT, -- tx hash for market creation
-  xrpl_escrow_sequence INTEGER,
-  xrpl_escrow_tx TEXT,
-  xrpl_escrow_finish_tx TEXT,
-  xrpl_escrow_cancel_tx TEXT,
-  pool_total_drops TEXT NOT NULL DEFAULT '0',
-  yes_total_drops TEXT NOT NULL DEFAULT '0',
-  no_total_drops TEXT NOT NULL DEFAULT '0',
-  issuer_address TEXT NOT NULL,
-  operator_address TEXT NOT NULL
-);
+id TEXT PRIMARY KEY
+title TEXT NOT NULL
+description TEXT
+status TEXT DEFAULT 'pending'  -- pending, open, closed, resolved
+betting_deadline TEXT
+resolution_time TEXT
+resolved_outcome TEXT  -- 'YES' or 'NO'
+escrow_tx_hash TEXT
+escrow_sequence INTEGER
+issuer_address TEXT
+yes_currency_code TEXT
+no_currency_code TEXT
+total_yes_amount TEXT DEFAULT '0'
+total_no_amount TEXT DEFAULT '0'
+created_at TEXT
+updated_at TEXT
 ```
 
 ### bets
 ```sql
-CREATE TABLE bets (
-  id TEXT PRIMARY KEY,
-  market_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  outcome TEXT NOT NULL, -- YES|NO
-  amount_drops TEXT NOT NULL,
-  status TEXT NOT NULL, -- Pending|Confirmed|Failed|Refunded
-  placed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  payment_tx TEXT, -- user Payment tx hash
-  escrow_tx TEXT, -- escrow creation tx hash
-  mint_tx TEXT, -- issuer Payment tx hash
-  memo_json TEXT,
-  FOREIGN KEY (market_id) REFERENCES markets(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
+id TEXT PRIMARY KEY
+market_id TEXT REFERENCES markets(id)
+bettor_address TEXT NOT NULL
+side TEXT NOT NULL  -- 'YES' or 'NO'
+amount_drops TEXT NOT NULL
+tx_hash TEXT
+status TEXT DEFAULT 'pending'
+created_at TEXT
 ```
 
-### escrows
+## New Schema
+
+### markets (modified)
 ```sql
-CREATE TABLE escrows (
-  id TEXT PRIMARY KEY,
-  market_id TEXT NOT NULL,
-  amount_drops TEXT NOT NULL,
-  status TEXT NOT NULL, -- Open|Finished|Canceled
-  sequence INTEGER NOT NULL,
-  create_tx TEXT NOT NULL,
-  finish_tx TEXT,
-  cancel_tx TEXT,
-  cancel_after INTEGER NOT NULL,
-  finish_after INTEGER,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  FOREIGN KEY (market_id) REFERENCES markets(id)
-);
+id TEXT PRIMARY KEY
+title TEXT NOT NULL
+description TEXT
+category TEXT DEFAULT 'general'  -- politics, economy, local, culture, tech
+category_label TEXT  -- 政治, 経済, 地域, 文化, テック
+status TEXT DEFAULT 'pending'  -- pending, open, closed, resolved
+betting_deadline TEXT
+resolution_time TEXT
+resolved_outcome_id TEXT  -- ID of winning outcome
+escrow_tx_hash TEXT
+escrow_sequence INTEGER
+issuer_address TEXT
+total_pool_drops TEXT DEFAULT '0'  -- Total XRP in pool
+created_at TEXT
+updated_at TEXT
 ```
 
-### trades
+### outcomes (new)
 ```sql
-CREATE TABLE trades (
-  id TEXT PRIMARY KEY,
-  market_id TEXT NOT NULL,
-  offer_tx TEXT NOT NULL,
-  taker_gets TEXT NOT NULL,
-  taker_pays TEXT NOT NULL,
-  executed_at TEXT NOT NULL,
-  ledger_index INTEGER NOT NULL,
-  memo_json TEXT,
-  FOREIGN KEY (market_id) REFERENCES markets(id)
-);
+id TEXT PRIMARY KEY
+market_id TEXT REFERENCES markets(id)
+label TEXT NOT NULL  -- "村井嘉浩（現職）", "新人候補A", etc.
+currency_code TEXT  -- XRPL issued currency code for this outcome
+total_amount_drops TEXT DEFAULT '0'  -- Total bet on this outcome
+display_order INTEGER DEFAULT 0
+created_at TEXT
 ```
 
-### payouts
+### user_attributes (new)
 ```sql
-CREATE TABLE payouts (
-  id TEXT PRIMARY KEY,
-  market_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  amount_drops TEXT NOT NULL,
-  status TEXT NOT NULL, -- Pending|Sent|Failed
-  payout_tx TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  FOREIGN KEY (market_id) REFERENCES markets(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
+id TEXT PRIMARY KEY
+wallet_address TEXT NOT NULL
+attribute_type TEXT NOT NULL  -- 'region', 'expertise', 'experience'
+attribute_label TEXT NOT NULL  -- "宮城県在住", "政治学専攻", etc.
+weight REAL DEFAULT 1.0  -- Multiplier (e.g., 1.3, 1.5)
+verified_at TEXT
+created_at TEXT
+
+UNIQUE(wallet_address, attribute_type, attribute_label)
 ```
 
-### wallet_links
+### bets (modified)
 ```sql
-CREATE TABLE wallet_links (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  wallet_address TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  UNIQUE (wallet_address, provider),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
+id TEXT PRIMARY KEY
+market_id TEXT REFERENCES markets(id)
+outcome_id TEXT REFERENCES outcomes(id)  -- Changed from 'side'
+bettor_address TEXT NOT NULL
+amount_drops TEXT NOT NULL  -- Original amount
+weight_score REAL DEFAULT 1.0  -- User's weight at bet time
+effective_amount_drops TEXT NOT NULL  -- amount × weight
+tx_hash TEXT
+status TEXT DEFAULT 'pending'
+created_at TEXT
 ```
 
-### ledger_events
-```sql
-CREATE TABLE ledger_events (
-  id TEXT PRIMARY KEY,
-  tx_hash TEXT NOT NULL UNIQUE,
-  event_type TEXT NOT NULL,
-  market_id TEXT,
-  payload_json TEXT NOT NULL,
-  ledger_index INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
+## Weight Calculation
+
+```typescript
+function calculateWeightScore(attributes: Attribute[]): number {
+  const BASE_WEIGHT = 1.0;
+  const additionalWeight = attributes.reduce((sum, attr) => sum + (attr.weight - 1.0), 0);
+  return Math.min(3.0, Math.max(0.5, BASE_WEIGHT + additionalWeight));
+}
 ```
 
-### system_state
-```sql
-CREATE TABLE system_state (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-```
+Weight ranges:
+- Minimum: 0.5 (no relevant attributes)
+- Base: 1.0 (new user, no attributes)
+- Maximum: 3.0 (multiple high-value attributes)
 
-## Indexes
-```sql
-CREATE INDEX idx_markets_status ON markets(status);
-CREATE INDEX idx_markets_deadline ON markets(betting_deadline);
-CREATE INDEX idx_bets_market ON bets(market_id);
-CREATE INDEX idx_bets_user ON bets(user_id);
-CREATE INDEX idx_bets_status ON bets(status);
-CREATE INDEX idx_escrows_market ON escrows(market_id);
-CREATE INDEX idx_trades_market ON trades(market_id);
-CREATE INDEX idx_payouts_market ON payouts(market_id);
-CREATE INDEX idx_payouts_user ON payouts(user_id);
-CREATE INDEX idx_ledger_events_market ON ledger_events(market_id);
-CREATE INDEX idx_ledger_events_ledger ON ledger_events(ledger_index);
-```
+## Category System
 
-## Relationships and Constraints
-- `markets` to `bets`, `escrows`, `trades`, and `payouts` are one-to-many.
-- `users` to `bets` and `payouts` are one-to-many.
-- `wallet_links` allows multiple providers per user.
-- `ledger_events.tx_hash` is unique for idempotent ingestion.
-- `escrows.sequence` is unique per market via application logic.
+| Code | Label (JP) | Markets |
+|------|-----------|---------|
+| politics | 政治 | Elections, policy decisions |
+| economy | 経済 | Economic indicators, prices |
+| local | 地域 | Local events, regional |
+| culture | 文化 | Entertainment, sports |
+| tech | テック | Technology, product launches |
+| general | その他 | Uncategorized |
 
 ## Migration Strategy
-- Use a lightweight migration table with ordered SQL files.
-- Run migrations on API startup and worker startup with a DB lock to avoid race conditions.
-- Keep migrations idempotent with `IF NOT EXISTS` for tables and indexes.
 
-Migration table
-```sql
-CREATE TABLE IF NOT EXISTS migrations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
-  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-```
-
-Migration flow
-1. Load migration files in lexical order.
-1. For each file, check `migrations.name`.
-1. Apply in a transaction.
-1. Insert a record on success.
-
-## WAL and Concurrency
-- Enable WAL mode for better concurrent reads.
-- Set a busy timeout for write contention.
-
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA busy_timeout = 5000;
-```
+1. Add new columns to `markets` table (category, category_label)
+2. Create `outcomes` table
+3. Create `user_attributes` table
+4. Modify `bets` table (add outcome_id, weight_score, effective_amount_drops)
+5. Migrate existing YES/NO bets to new outcome format

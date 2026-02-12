@@ -1,30 +1,48 @@
 # Phase Overview
 
-## Phases (In Order)
-1. Foundation & Setup
-2. XRPL Core Integration
-3. Market Lifecycle
-4. Trading & Resolution
-5. Frontend Integration
-6. Polish & Demo Prep
+Total phases: 5
+Estimated time: 2-3 days
+
+## Phase Order
+
+1. **schema-migration** — Database changes for multi-outcome and attributes
+2. **api-extension** — New endpoints and modified responses
+3. **ui-foundation** — Migrate base components and providers
+4. **market-pages** — Homepage, market detail, betting flow
+5. **user-features** — My Page, portfolio, attributes display
 
 ## Dependencies
-- 1 -> 2: monorepo + backend scaffold + XRPL client + DB schema are prerequisites for core XRPL tx builders and ingestion.
-- 2 -> 3: transaction builders, memo codec, and ledger ingestion required before market lifecycle flows.
-- 3 -> 4: market creation/betting flows must exist before DEX trading and resolution/payouts.
-- 4 -> 5: backend endpoints and realtime events needed before wiring frontend to real data.
-- 5 -> 6: UI and core flows in place before end-to-end testing, documentation, and demo packaging.
 
-## Rough Time Estimates (13-Day Hackathon)
-- Phase 1: 2.5 days
-- Phase 2: 2.5 days
-- Phase 3: 2.5 days
-- Phase 4: 2.0 days
-- Phase 5: 2.0 days
-- Phase 6: 1.5 days
+```
+schema-migration
+       ↓
+  api-extension
+       ↓
+  ui-foundation
+       ↓
+   market-pages
+       ↓
+  user-features
+```
 
-Total: 13 days
+Each phase builds on the previous. No parallel execution.
 
-## Notes
-- Dates are based on current date February 11, 2026, with Demo Day February 24, 2026.
-- Buffer is embedded in Phase 6 for polish, testing, and demo prep.
+## Risk Assessment
+
+| Phase | Risk | Mitigation |
+|-------|------|------------|
+| schema-migration | Existing data migration | Keep old columns, add new ones |
+| api-extension | Breaking API changes | Version responses, update frontend in sync |
+| ui-foundation | shadcn version conflicts | Use apps/mock versions, test early |
+| market-pages | XRPL transaction changes | Multi-outcome tokens need new currency codes |
+| user-features | Weight calculation edge cases | Cap at 0.5-3.0 range |
+
+## Definition of Done
+
+- All phases complete
+- Docker compose runs successfully
+- GemWallet can connect
+- Can view markets with multiple outcomes
+- Can place bet on any outcome
+- Portfolio shows positions
+- All Japanese UI text preserved

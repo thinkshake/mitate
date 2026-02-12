@@ -2,34 +2,32 @@ current_stage: implementation
 gates:
     design:
         status: approved
-        approved_at: 2026-02-11T18:50:46.074482+09:00
+        approved_at: 2026-02-12T23:20:50.38192+09:00
         approved_by: auto
         reason: ""
     implementation:
-        status: approved
-        approved_at: 2026-02-11T21:51:50.903933+09:00
-        approved_by: auto
+        status: open
+        approved_at: null
+        approved_by: ""
         reason: ""
     phases:
         status: approved
-        approved_at: 2026-02-11T18:52:43.653177+09:00
+        approved_at: 2026-02-12T23:22:52.150425+09:00
         approved_by: auto
         reason: ""
     requirements:
         status: approved
-        approved_at: 2026-02-11T18:47:54.779816+09:00
+        approved_at: 2026-02-12T23:19:32.784982+09:00
         approved_by: auto
         reason: ""
 phases:
-    - name: 1-foundation
+    - name: 1-schema-migration
       status: done
-    - name: 2-xrpl-core
+    - name: 2-api-extension
       status: done
-    - name: 3-market-lifecycle
-      status: done
-    - name: 4-trading-resolution
-      status: done
-    - name: 5-frontend
-      status: done
-    - name: 6-polish
-      status: done
+    - name: 3-ui-foundation
+      status: in-progress
+    - name: 4-market-pages
+      status: planned
+    - name: 5-user-features
+      status: planned

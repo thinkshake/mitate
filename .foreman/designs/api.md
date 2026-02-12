@@ -1,333 +1,291 @@
-# MITATE REST API
+# API Design
 
-Base URL: `/api`
-
-All requests and responses are JSON unless otherwise noted.
-
-## Authentication
-Two modes are supported.
-- User auth via wallet signature.
-- Admin auth via server-side API key.
-
-### User auth flow
-1. `POST /auth/nonce` returns a nonce string.
-1. Client signs the nonce with wallet.
-1. Client posts signature to `POST /auth/verify`.
-1. Server returns a short-lived JWT for API access.
-
-Nonce request
-```http
-POST /api/auth/nonce
-```
-Response
-```json
-{
-  "nonce": "mitate:nonce:3e8a9f1a-..."
-}
-```
-
-Verify request
-```http
-POST /api/auth/verify
-```
-Body
-```json
-{
-  "walletAddress": "r...",
-  "provider": "xaman",
-  "signature": "..."
-}
-```
-Response
-```json
-{
-  "token": "<jwt>",
-  "user": {
-    "id": "usr_...",
-    "walletAddress": "r...",
-    "provider": "xaman"
-  }
-}
-```
-
-### Admin auth
-- `X-Admin-Key` header required for admin endpoints.
-- Admin endpoints are limited to market creation, resolution, and payouts.
-
-## Error Model
-```json
-{
-  "error": {
-    "code": "MARKET_NOT_FOUND",
-    "message": "Market not found",
-    "details": {}
-  }
-}
-```
-
-Error codes
-- `AUTH_REQUIRED`
-- `INVALID_SIGNATURE`
-- `INSUFFICIENT_SCOPE`
-- `MARKET_NOT_FOUND`
-- `MARKET_CLOSED`
-- `BET_TOO_LATE`
-- `INVALID_OUTCOME`
-- `TRUSTLINE_REQUIRED`
-- `XRPL_SUBMISSION_FAILED`
-- `RATE_LIMITED`
-- `VALIDATION_ERROR`
-
-## Rate Limiting
-- Default: 60 requests per minute per IP.
-- Authenticated: 120 requests per minute per user.
-- Admin: 30 requests per minute per key.
-- Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+## Base URL
+`http://localhost:3001` (dev) / `https://api.mitate.app` (prod)
 
 ## Endpoints
 
 ### Markets
 
 #### GET /markets
-List markets with summary and status.
+List all markets with optional filters.
 
-Response
+Query params:
+- `status` — Filter by status (open, closed, resolved)
+- `category` — Filter by category (politics, economy, etc.)
+
+Response:
 ```json
 {
-  "data": [
+  "markets": [
     {
-      "id": "mkt_...",
-      "title": "Will BTC be above $70k on Feb 24?",
-      "status": "Open",
-      "bettingDeadline": "2026-02-20T00:00:00Z",
-      "poolTotalDrops": "150000000",
-      "yesTotalDrops": "90000000",
-      "noTotalDrops": "60000000"
+      "id": "m1",
+      "title": "宮城県知事選挙の当選者予想",
+      "description": "2026年に予定される宮城県知事選挙...",
+      "category": "politics",
+      "categoryLabel": "政治",
+      "status": "open",
+      "bettingDeadline": "2026-06-15T00:00:00Z",
+      "totalPoolDrops": "1234500000000",
+      "outcomes": [
+        { "id": "o1", "label": "村井嘉浩（現職）", "probability": 42, "totalAmountDrops": "518490000000" },
+        { "id": "o2", "label": "新人候補A", "probability": 28, "totalAmountDrops": "345660000000" },
+        { "id": "o3", "label": "新人候補B", "probability": 18, "totalAmountDrops": "222210000000" },
+        { "id": "o4", "label": "その他", "probability": 12, "totalAmountDrops": "148140000000" }
+      ],
+      "createdAt": "2026-01-15T00:00:00Z"
     }
   ]
 }
 ```
 
 #### GET /markets/:id
-Market details with on-chain references.
+Get single market with full details.
 
-Response
+Response: Same as market object above, plus:
 ```json
 {
-  "data": {
-    "id": "mkt_...",
-    "title": "...",
-    "description": "...",
-    "status": "Open",
-    "bettingDeadline": "2026-02-20T00:00:00Z",
-    "resolutionTime": null,
-    "issuerAddress": "r...",
-    "operatorAddress": "r...",
-    "xrplEscrowSequence": 12345,
-    "poolTotalDrops": "150000000",
-    "yesTotalDrops": "90000000",
-    "noTotalDrops": "60000000"
-  }
+  "escrowTxHash": "ABC123...",
+  "escrowSequence": 12345,
+  "resolutionTime": "2026-06-20T00:00:00Z",
+  "resolvedOutcomeId": null
 }
 ```
 
 #### POST /markets
-Create market. Admin only.
+Create a new market (admin only).
 
-Request
+Request:
 ```json
 {
-  "title": "...",
-  "description": "...",
-  "category": "crypto",
-  "bettingDeadline": "2026-02-20T00:00:00Z",
-  "resolutionTime": "2026-02-21T00:00:00Z"
-}
-```
-Response
-```json
-{
-  "data": {
-    "id": "mkt_...",
-    "status": "Draft"
-  }
+  "title": "市場タイトル",
+  "description": "詳細説明",
+  "category": "politics",
+  "categoryLabel": "政治",
+  "bettingDeadline": "2026-06-15T00:00:00Z",
+  "resolutionTime": "2026-06-20T00:00:00Z",
+  "outcomes": [
+    { "label": "候補A" },
+    { "label": "候補B" },
+    { "label": "その他" }
+  ]
 }
 ```
 
-#### PATCH /markets/:id
-Update metadata. Admin only.
-
-#### POST /markets/:id/close
-Admin only. Moves market to `Closed` when deadline passes.
-
-### Betting
-
-#### POST /markets/:id/bets
-Create bet intent. Returns tx payloads.
-
-Request
-```json
-{
-  "outcome": "YES",
-  "amountDrops": "1000000"
-}
-```
-Response
-```json
-{
-  "data": {
-    "trustSet": {
-      "TransactionType": "TrustSet",
-      "Account": "rUser...",
-      "LimitAmount": {
-        "currency": "<hex>",
-        "issuer": "rIssuer...",
-        "value": "1000000"
-      },
-      "Memos": ["..."]
-    },
-    "payment": {
-      "TransactionType": "Payment",
-      "Account": "rUser...",
-      "Destination": "rOperator...",
-      "Amount": "1000000",
-      "Memos": ["..."]
-    }
-  }
-}
-```
-
-#### POST /markets/:id/bets/confirm
-Confirm bet by tx hash. Mints tokens after verification.
-
-Request
-```json
-{
-  "paymentTx": "<hash>"
-}
-```
-Response
-```json
-{
-  "data": {
-    "betId": "bet_...",
-    "status": "Confirmed"
-  }
-}
-```
-
-### Trading
-
-#### POST /markets/:id/offers
-Create offer intent. Returns OfferCreate payload.
-
-Request
-```json
-{
-  "side": "sell",
-  "outcome": "YES",
-  "takerGets": "1000",
-  "takerPaysDrops": "2000000"
-}
-```
-Response
-```json
-{
-  "data": {
-    "offer": {
-      "TransactionType": "OfferCreate",
-      "Account": "rUser...",
-      "TakerGets": {
-        "currency": "<hex>",
-        "issuer": "rIssuer...",
-        "value": "1000"
-      },
-      "TakerPays": "2000000",
-      "Memos": ["..."]
-    }
-  }
-}
-```
-
-### Resolution and Payout
+Response: Created market object with IDs assigned.
 
 #### POST /markets/:id/resolve
-Admin only. Initiates EscrowFinish or EscrowCancel.
+Resolve a market (admin/multi-sign only).
 
-Request
+Request:
 ```json
 {
-  "outcome": "YES",
-  "action": "finish" 
+  "outcomeId": "o1",
+  "txHash": "DEF456..."
 }
 ```
-Response
+
+---
+
+### Bets
+
+#### GET /markets/:id/bets
+Get recent bets for a market.
+
+Query params:
+- `limit` — Max results (default 20)
+
+Response:
 ```json
 {
-  "data": {
-    "status": "Resolved",
-    "escrowFinishTx": "<hash>"
+  "bets": [
+    {
+      "id": "b1",
+      "marketId": "m1",
+      "outcomeId": "o1",
+      "outcomeLabel": "村井嘉浩（現職）",
+      "bettorAddress": "rXXX...",
+      "amountDrops": "10000000",
+      "weightScore": 1.5,
+      "effectiveAmountDrops": "15000000",
+      "txHash": "ABC...",
+      "createdAt": "2026-02-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+#### POST /markets/:id/bets
+Place a bet.
+
+Request:
+```json
+{
+  "outcomeId": "o1",
+  "bettorAddress": "rXXX...",
+  "amountDrops": "10000000"
+}
+```
+
+Response:
+```json
+{
+  "bet": { ... },
+  "weightScore": 1.5,
+  "effectiveAmountDrops": "15000000",
+  "unsignedTx": { /* XRPL transaction to sign */ }
+}
+```
+
+#### POST /markets/:id/bets/:betId/confirm
+Confirm a bet after XRPL transaction.
+
+Request:
+```json
+{
+  "txHash": "ABC123..."
+}
+```
+
+#### GET /markets/:id/preview
+Preview potential payout for a bet.
+
+Query params:
+- `outcomeId` — Outcome to bet on
+- `amountDrops` — Amount in drops
+- `bettorAddress` — For weight calculation
+
+Response:
+```json
+{
+  "potentialPayout": "25000000",
+  "impliedOdds": "2.5",
+  "weightScore": 1.5,
+  "effectiveAmount": "15000000",
+  "newProbability": 45
+}
+```
+
+---
+
+### User Attributes
+
+#### GET /users/:address/attributes
+Get user's verified attributes.
+
+Response:
+```json
+{
+  "address": "rXXX...",
+  "weightScore": 1.8,
+  "attributes": [
+    {
+      "id": "a1",
+      "type": "region",
+      "typeLabel": "地域",
+      "label": "宮城県在住",
+      "weight": 1.5,
+      "verifiedAt": "2026-01-10T00:00:00Z"
+    },
+    {
+      "id": "a2",
+      "type": "expertise",
+      "typeLabel": "専門知識",
+      "label": "政治学専攻",
+      "weight": 1.2,
+      "verifiedAt": "2026-01-15T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### POST /users/:address/attributes
+Add a new attribute (admin verification flow).
+
+Request:
+```json
+{
+  "type": "region",
+  "label": "東京都在住",
+  "weight": 1.3
+}
+```
+
+#### DELETE /users/:address/attributes/:id
+Remove an attribute.
+
+---
+
+### User Bets (Portfolio)
+
+#### GET /users/:address/bets
+Get all bets for a user.
+
+Query params:
+- `status` — Filter by bet status (open, closed)
+
+Response:
+```json
+{
+  "bets": [
+    {
+      "id": "b1",
+      "marketId": "m1",
+      "marketTitle": "宮城県知事選挙の当選者予想",
+      "outcomeId": "o1",
+      "outcomeLabel": "村井嘉浩（現職）",
+      "amountDrops": "10000000",
+      "weightScore": 1.5,
+      "effectiveAmountDrops": "15000000",
+      "currentProbability": 42,
+      "status": "open",
+      "createdAt": "2026-02-10T12:00:00Z"
+    }
+  ],
+  "totalBets": 3,
+  "totalAmountDrops": "35000000"
+}
+```
+
+---
+
+### Categories
+
+#### GET /categories
+Get available market categories.
+
+Response:
+```json
+{
+  "categories": [
+    { "value": "all", "label": "すべて" },
+    { "value": "politics", "label": "政治" },
+    { "value": "economy", "label": "経済" },
+    { "value": "local", "label": "地域" },
+    { "value": "culture", "label": "文化" },
+    { "value": "tech", "label": "テック" }
+  ]
+}
+```
+
+---
+
+## Error Responses
+
+All errors follow:
+```json
+{
+  "error": {
+    "code": "MARKET_NOT_FOUND",
+    "message": "Market with ID m999 not found"
   }
 }
 ```
 
-#### POST /markets/:id/payouts
-Admin only. Executes payouts for winners.
-
-Request
-```json
-{
-  "batchSize": 50
-}
-```
-Response
-```json
-{
-  "data": {
-    "payoutsCreated": 50,
-    "status": "InProgress"
-  }
-}
-```
-
-#### GET /markets/:id/payouts
-List payouts for a market.
-
-### Wallets
-
-#### POST /wallet/connect
-Associates wallet with user.
-
-Request
-```json
-{
-  "walletAddress": "r...",
-  "provider": "xaman"
-}
-```
-
-#### GET /wallet/:address
-Returns user profile and balances.
-
-Response
-```json
-{
-  "data": {
-    "walletAddress": "r...",
-    "markets": 3,
-    "balances": [
-      { "currency": "YES", "issuer": "r...", "value": "100" }
-    ]
-  }
-}
-```
-
-## Webhooks and Realtime
-- SSE endpoint: `GET /events` for live market updates.
-- Events: `MarketUpdated`, `BetConfirmed`, `TradeExecuted`, `PayoutSent`.
-
-## Validation and Security
-- All inputs validated using Zod schemas in the API layer.
-- Memo payloads are validated for `v`, `type`, and `marketId`.
-- XRPL network must be Testnet; reject mainnet accounts.
-
+Common codes:
+- `MARKET_NOT_FOUND`
+- `OUTCOME_NOT_FOUND`
+- `INVALID_AMOUNT`
+- `BETTING_CLOSED`
+- `INSUFFICIENT_BALANCE`
+- `WALLET_NOT_CONNECTED`
