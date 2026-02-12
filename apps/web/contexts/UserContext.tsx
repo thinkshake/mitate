@@ -2,7 +2,14 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useWallet } from "@/contexts/WalletContext";
-import { fetchUserAttributes, fetchUserBets, type Attribute, type UserBet } from "@/lib/api";
+import {
+  fetchUserAttributes,
+  fetchUserBets,
+  addUserAttribute,
+  removeUserAttribute,
+  type Attribute,
+  type UserBet,
+} from "@/lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -16,6 +23,8 @@ export interface UserState {
 
 export interface UserContextType extends UserState {
   fetchUser: (address: string) => Promise<void>;
+  addAttribute: (attr: { type: string; label: string; weight: number }) => Promise<void>;
+  deleteAttribute: (id: string) => Promise<void>;
 }
 
 // ── Context ────────────────────────────────────────────────────────
@@ -49,8 +58,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const [attrData, betsData] = await Promise.all([
-        fetchUserAttributes(addr).catch(() => ({ attributes: [], weightScore: 1.0 })),
-        fetchUserBets(addr).catch(() => ({ bets: [] })),
+        fetchUserAttributes(addr).catch(() => ({ attributes: [] as Attribute[], weightScore: 1.0 })),
+        fetchUserBets(addr).catch(() => ({ bets: [] as UserBet[] })),
       ]);
 
       const attributes = attrData.attributes || [];
@@ -72,6 +81,32 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const addAttribute = useCallback(async (attr: { type: string; label: string; weight: number }) => {
+    if (!address) return;
+    try {
+      await addUserAttribute(address, attr);
+      await fetchUser(address);
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        error: err instanceof Error ? err.message : "属性の追加に失敗しました",
+      }));
+    }
+  }, [address, fetchUser]);
+
+  const deleteAttribute = useCallback(async (id: string) => {
+    if (!address) return;
+    try {
+      await removeUserAttribute(address, id);
+      await fetchUser(address);
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        error: err instanceof Error ? err.message : "属性の削除に失敗しました",
+      }));
+    }
+  }, [address, fetchUser]);
+
   // Auto-fetch when wallet connects
   useEffect(() => {
     if (connected && address) {
@@ -90,6 +125,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const value: UserContextType = {
     ...state,
     fetchUser,
+    addAttribute,
+    deleteAttribute,
   };
 
   return (

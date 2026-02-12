@@ -28,6 +28,6 @@ phases:
     - name: 3-ui-foundation
       status: done
     - name: 4-market-pages
-      status: in-progress
+      status: done
     - name: 5-user-features
-      status: planned
+      status: in-progress
