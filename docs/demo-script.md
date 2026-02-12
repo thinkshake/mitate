@@ -24,9 +24,9 @@
 ## Live Demo: Betting Flow (0:40 - 1:40)
 
 ### 1. Connect Wallet (0:40 - 0:50)
-"Let's place a bet. First, I connect my Xaman wallet."
+"Let's place a bet. First, I connect my GemWallet."
 
-**Action:** Click Connect → Select Xaman → Approve connection
+**Action:** Click Connect → GemWallet popup → Approve connection
 
 ### 2. Select Market (0:50 - 1:00)
 "I'll bet on 'Will Bitcoin reach $100K by end of 2025?' — currently 65% YES."
@@ -36,7 +36,7 @@
 ### 3. Place Bet (1:00 - 1:20)
 "I'll bet 50 XRP on YES. The system builds two XRPL transactions: TrustSet for the outcome token, and Payment to the escrow pool."
 
-**Action:** Enter amount → Click Bet → Sign transactions in Xaman
+**Action:** Enter amount → Click Bet → Sign transaction in GemWallet
 
 ### 4. Verify On-Chain (1:20 - 1:40)
 "My bet is now recorded on XRPL. Let's verify on the explorer."
