@@ -26,8 +26,8 @@ phases:
     - name: 2-api-extension
       status: done
     - name: 3-ui-foundation
-      status: in-progress
+      status: done
     - name: 4-market-pages
-      status: planned
+      status: in-progress
     - name: 5-user-features
       status: planned

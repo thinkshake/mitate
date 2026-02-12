@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Header } from "@/components/header";
+import { SiteHeader } from "@/components/site-header";
 import { WalletProvider } from "@/contexts/WalletContext";
 import { UserProvider } from "@/contexts/UserContext";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -42,37 +42,18 @@ export default function RootLayout({
           <WalletProvider>
             <UserProvider>
               <TooltipProvider>
-                <Header />
-                <main className="min-h-screen">{children}</main>
-                <footer className="border-t border-border py-8 mt-12">
-                  <div className="container mx-auto px-4">
-                    <div className="flex flex-col md:flex-row items-center justify-between text-sm text-muted-foreground">
-                      <div className="mb-4 md:mb-0">
-                        © 2026 MITATE. XRPL Parimutuel Prediction Market.
-                      </div>
-                      <div className="flex space-x-6">
-                        <a
-                          href="#"
-                          className="hover:text-foreground transition-colors"
-                        >
-                          利用規約
-                        </a>
-                        <a
-                          href="#"
-                          className="hover:text-foreground transition-colors"
-                        >
-                          プライバシー
-                        </a>
-                        <a
-                          href="#"
-                          className="hover:text-foreground transition-colors"
-                        >
-                          お問い合わせ
-                        </a>
+                <div className="min-h-screen bg-background text-foreground">
+                  <SiteHeader />
+                  <main>{children}</main>
+                  <footer className="mt-20 border-t border-border py-8">
+                    <div className="mx-auto max-w-6xl px-4 lg:px-6">
+                      <div className="flex flex-col items-center justify-between gap-4 text-sm text-muted-foreground sm:flex-row">
+                        <span className="font-mono tracking-widest">MITATE</span>
+                        <span>© 2026 MITATE. XRPL Parimutuel Prediction Market.</span>
                       </div>
                     </div>
-                  </div>
-                </footer>
+                  </footer>
+                </div>
                 <Toaster />
               </TooltipProvider>
             </UserProvider>

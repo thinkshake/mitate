@@ -1,103 +1,83 @@
-import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { type Market, formatXrpCompact, formatDeadline } from "@/lib/api";
+import Link from "next/link"
+import { cn } from "@/lib/utils"
+import { type Market, formatXrp, formatDeadline } from "@/lib/api"
 
-interface MarketCardProps {
-  market: Market;
-  featured?: boolean;
+function ProbabilityBar({ label, probability }: { label: string; probability: number }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="truncate text-sm text-foreground">{label}</span>
+        <span className="ml-2 shrink-0 font-mono text-sm font-medium text-foreground">
+          {probability}%
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+        <div
+          className="h-full rounded-full bg-foreground transition-all duration-500"
+          style={{ width: `${probability}%` }}
+        />
+      </div>
+    </div>
+  )
 }
 
-export function MarketCard({ market, featured = false }: MarketCardProps) {
-  const isOpen = market.status === "open";
-  const topOutcome = market.outcomes?.[0];
-  const topProbability = topOutcome?.probability ?? 50;
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { label: string; className: string }> = {
+    open: { label: "オープン", className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400" },
+    closed: { label: "クローズ", className: "border-border bg-secondary text-muted-foreground" },
+    resolved: { label: "解決済み", className: "border-border bg-secondary text-muted-foreground" },
+  }
+
+  const { label, className } = config[status] ?? { label: status, className: "border-border bg-secondary text-muted-foreground" }
 
   return (
-    <Link href={`/markets/${market.id}`}>
-      <Card
-        className={`
-        border border-border hover:border-muted-foreground/30 transition-all duration-200
-        hover:shadow-sm cursor-pointer
-        ${featured ? "h-full" : ""}
-        ${!isOpen ? "opacity-75" : ""}
-      `}
+    <span className={cn("rounded-full border px-2.5 py-0.5 text-xs", className)}>
+      {label}
+    </span>
+  )
+}
+
+export function MarketCard({ market }: { market: Market }) {
+  const topOutcomes = [...market.outcomes]
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 2)
+
+  return (
+    <Link href={`/market/${market.id}`}>
+      <article
+        className="group cursor-pointer rounded-lg border border-border bg-card p-5 transition-all hover:border-foreground/30 hover:shadow-sm"
+        aria-label={`マーケット: ${market.title}`}
       >
-        <CardContent className="p-5">
-          {/* Category Badge */}
-          <div className="flex items-center justify-between mb-3">
-            <Badge
-              variant="secondary"
-              className="font-medium"
-            >
-              {market.categoryLabel || market.category}
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              {formatDeadline(market.bettingDeadline)}
-            </span>
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground">
+            {market.categoryLabel || market.category}
+          </span>
+          <StatusBadge status={market.status} />
+        </div>
 
-          {/* Title */}
-          <h3
-            className={`
-            font-semibold mb-4 line-clamp-2
-            ${featured ? "text-lg" : "text-base"}
-          `}
-          >
-            {market.title}
-          </h3>
+        <h3 className="mt-3 text-balance text-base font-bold leading-relaxed text-foreground">
+          {market.title}
+        </h3>
 
-          {/* Outcomes */}
-          {market.outcomes && market.outcomes.length > 0 && (
-            <div className="mb-4 space-y-1">
-              {market.outcomes.slice(0, 3).map((outcome) => (
-                <div
-                  key={outcome.id}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="text-muted-foreground truncate mr-2">
-                    {outcome.label}
-                  </span>
-                  <span className="font-medium">{outcome.probability}%</span>
-                </div>
-              ))}
-              {market.outcomes.length > 3 && (
-                <div className="text-xs text-muted-foreground">
-                  +{market.outcomes.length - 3} more
-                </div>
-              )}
-            </div>
-          )}
+        <div className="mt-4 flex flex-col gap-3">
+          {topOutcomes.map((outcome) => (
+            <ProbabilityBar
+              key={outcome.id}
+              label={outcome.label}
+              probability={outcome.probability}
+            />
+          ))}
+        </div>
 
-          {/* Stats Row */}
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              プール:{" "}
-              <span className="text-foreground">
-                {formatXrpCompact(market.totalPoolDrops)}
-              </span>
-            </div>
-            {market.status !== "open" && (
-              <Badge
-                variant="outline"
-                className={
-                  market.status === "resolved"
-                    ? "border-blue-500 text-blue-700"
-                    : market.status === "closed"
-                    ? "border-yellow-500 text-yellow-700"
-                    : ""
-                }
-              >
-                {market.status === "closed"
-                  ? "クローズ"
-                  : market.status === "resolved"
-                  ? "解決済み"
-                  : market.status}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+          <span className="text-xs text-muted-foreground">
+            総取引量: <span className="font-mono">{formatXrp(market.totalPoolDrops)}</span>
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {formatDeadline(market.bettingDeadline)}
+          </span>
+        </div>
+      </article>
     </Link>
-  );
+  )
 }
