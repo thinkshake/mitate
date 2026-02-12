@@ -7,16 +7,18 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
-    environment:
-      - PORT=3001
-      - NODE_ENV=development
-      - DATABASE_PATH=/data/mitate.db
-      - XRPL_RPC_URL=https://s.altnet.rippletest.net:51234
-      - XRPL_WS_URL=wss://s.altnet.rippletest.net:51233
-      - XRPL_NETWORK_ID=1
-      - XRPL_OPERATOR_ADDRESS=${XRPL_OPERATOR_ADDRESS:-}
-      - XRPL_ISSUER_ADDRESS=${XRPL_ISSUER_ADDRESS:-}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-dev-admin-key}
+    # environment:
+    #   - PORT=3001
+    #   - NODE_ENV=development
+    #   - DATABASE_PATH=/data/mitate.db
+    #   - XRPL_RPC_URL=https://s.altnet.rippletest.net:51234
+    #   - XRPL_WS_URL=wss://s.altnet.rippletest.net:51233
+    #   - XRPL_NETWORK_ID=1
+    #   - XRPL_OPERATOR_ADDRESS=${XRPL_OPERATOR_ADDRESS:-}
+    #   - XRPL_ISSUER_ADDRESS=${XRPL_ISSUER_ADDRESS:-}
+    #   - ADMIN_API_KEY=${ADMIN_API_KEY:-dev-admin-key}
+    env_file:
+      - ./apps/api/.env
     volumes:
       - api-data:/data
       - ./apps/api/src:/app/src:ro
