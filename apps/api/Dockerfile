@@ -24,7 +24,7 @@ RUN mkdir -p /data && chown -R bun:bun /data
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/src/db/migrations ./src/db/migrations
+COPY --from=builder /app/src/db/migrations ./dist/migrations
 
 USER bun
 EXPOSE 3001

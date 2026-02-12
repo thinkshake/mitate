@@ -51,3 +51,5 @@ next-env.d.ts
 **/node_modules
 apps/web/.next
 **/. next
+
+account.text
