@@ -35,7 +35,7 @@ export function BetPanel({
   const [betConfirmed, setBetConfirmed] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const balance = wallet.balance ? dropsToXrp(wallet.balance) : 0
+  const balance = wallet.balance ? dropsToXrp(wallet.balance) : null
   const weightScore = user.weightScore
 
   const effectiveAmount = useMemo(
@@ -43,7 +43,9 @@ export function BetPanel({
     [amount, weightScore]
   )
 
-  const isDisabled = !selectedOutcome || amount <= 0 || amount > balance || !wallet.connected
+  // Only check balance if we have it loaded - don't block on loading balance
+  const insufficientBalance = balance !== null && amount > balance
+  const isDisabled = !selectedOutcome || amount <= 0 || !wallet.connected
   const isNotConnected = !wallet.connected
 
   const handleAmountChange = (value: string) => {
@@ -63,7 +65,25 @@ export function BetPanel({
       return
     }
 
-    if (!selectedOutcome || amount <= 0 || !wallet.address) return
+    if (!selectedOutcome) {
+      setError("選択肢を選んでください")
+      setTimeout(() => setError(null), 3000)
+      return
+    }
+
+    if (amount <= 0) {
+      setError("金額を入力してください")
+      setTimeout(() => setError(null), 3000)
+      return
+    }
+
+    if (insufficientBalance) {
+      setError("残高が不足しています")
+      setTimeout(() => setError(null), 3000)
+      return
+    }
+
+    if (!wallet.address) return
 
     setLoading(true)
     setError(null)
@@ -96,7 +116,7 @@ export function BetPanel({
     } finally {
       setLoading(false)
     }
-  }, [isNotConnected, selectedOutcome, amount, wallet, marketId, onBetPlaced])
+  }, [isNotConnected, selectedOutcome, amount, wallet, marketId, onBetPlaced, insufficientBalance])
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
@@ -139,7 +159,7 @@ export function BetPanel({
             <button
               key={q}
               onClick={() => handleQuickSelect(q)}
-              disabled={q > balance}
+              disabled={balance !== null && q > balance}
               className={cn(
                 "flex-1 rounded border px-2 py-1.5 font-mono text-xs transition-colors",
                 amount === q
@@ -156,8 +176,11 @@ export function BetPanel({
           <p className="mt-2 text-xs text-muted-foreground">
             利用可能:{" "}
             <span className="font-mono">
-              {wallet.balance ? formatXrp(wallet.balance) : "..."}
+              {wallet.balance ? formatXrp(wallet.balance) : "読み込み中..."}
             </span>
+            {insufficientBalance && (
+              <span className="ml-2 text-destructive">（残高不足）</span>
+            )}
           </p>
         )}
       </div>

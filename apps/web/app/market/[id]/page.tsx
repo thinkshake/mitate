@@ -97,9 +97,10 @@ export default function MarketDetailPage({ params }: PageProps) {
   }
 
   const statusConfig: Record<string, { label: string; className: string }> = {
-    open: { label: "オープン", className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400" },
-    closed: { label: "クローズ", className: "border-border bg-secondary text-muted-foreground" },
-    resolved: { label: "解決済み", className: "border-border bg-secondary text-muted-foreground" },
+    Open: { label: "オープン", className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400" },
+    Closed: { label: "クローズ", className: "border-border bg-secondary text-muted-foreground" },
+    Resolved: { label: "解決済み", className: "border-border bg-secondary text-muted-foreground" },
+    Draft: { label: "下書き", className: "border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400" },
   }
 
   const status = statusConfig[market.status] ?? { label: market.status, className: "border-border bg-secondary text-muted-foreground" }
