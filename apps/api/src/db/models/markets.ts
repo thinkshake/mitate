@@ -81,6 +81,8 @@ export interface MarketUpdate {
   poolTotalDrops?: string;
   yesTotalDrops?: string;
   noTotalDrops?: string;
+  operatorAddress?: string;
+  issuerAddress?: string;
 }
 
 // ── Queries ────────────────────────────────────────────────────────
@@ -284,6 +286,14 @@ export function updateMarket(id: string, update: MarketUpdate): Market | null {
   if (update.noTotalDrops !== undefined) {
     sets.push("no_total_drops = ?");
     values.push(update.noTotalDrops);
+  }
+  if (update.operatorAddress !== undefined) {
+    sets.push("operator_address = ?");
+    values.push(update.operatorAddress);
+  }
+  if (update.issuerAddress !== undefined) {
+    sets.push("issuer_address = ?");
+    values.push(update.issuerAddress);
   }
 
   if (sets.length === 0) {

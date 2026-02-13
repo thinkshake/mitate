@@ -145,8 +145,20 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
   // Build Payment tx (user pays XRP to operator)
   // Use market's stored operator address (set at market creation)
   const operatorAddress = market.operator_address || config.operatorAddress;
+  
+  // Debug logging
+  console.log("[placeBet] market.operator_address:", market.operator_address);
+  console.log("[placeBet] config.operatorAddress:", config.operatorAddress);
+  console.log("[placeBet] using operatorAddress:", operatorAddress);
+  console.log("[placeBet] user address:", input.userAddress);
+  
   if (!operatorAddress) {
     throw new Error("Operator address not configured");
+  }
+  
+  // Prevent self-payment (temREDUNDANT error)
+  if (operatorAddress === input.userAddress) {
+    throw new Error("Cannot place bet: operator address cannot be the same as bettor address");
   }
 
   const paymentTx = buildOutcomeBetPayment({
