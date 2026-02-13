@@ -33,7 +33,7 @@ const WalletContext = createContext<WalletContextType | null>(null);
 
 // ── Provider ───────────────────────────────────────────────────────
 
-const XRPL_TESTNET_URL = "https://s.altnet.rippletest.net:51234";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>({
@@ -51,17 +51,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (!address) return;
 
     try {
-      const response = await fetch(XRPL_TESTNET_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          method: "account_info",
-          params: [{ account: address, ledger_index: "validated" }],
-        }),
-      });
-      const data = await response.json();
-      if (data.result?.account_data?.Balance) {
-        setState((s) => ({ ...s, balance: data.result.account_data.Balance }));
+      // Use API proxy to avoid CORS issues
+      const response = await fetch(`${API_URL}/balance/${address}`);
+      const data = await response.json() as { balance?: string; error?: string };
+      if (data.balance) {
+        const balance = data.balance;
+        setState((s) => ({ ...s, balance }));
+      } else {
+        console.error("Balance fetch error:", data.error);
       }
     } catch (err) {
       console.error("Failed to fetch balance:", err);

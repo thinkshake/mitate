@@ -64,4 +64,37 @@ app.get("/ready", async (c) => {
   );
 });
 
+/**
+ * Get XRP balance for an address.
+ * Proxies the request to XRPL to avoid CORS issues.
+ */
+app.get("/balance/:address", async (c) => {
+  const address = c.req.param("address");
+  
+  if (!address || !address.startsWith("r") || address.length < 25) {
+    return c.json({ error: "Invalid address" }, 400);
+  }
+
+  try {
+    const response = await fetch("https://s.altnet.rippletest.net:51234", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "account_info",
+        params: [{ account: address, ledger_index: "validated" }],
+      }),
+    });
+    
+    const data = await response.json() as { result?: { account_data?: { Balance?: string }; error?: string } };
+    
+    if (data.result?.account_data?.Balance) {
+      return c.json({ balance: data.result.account_data.Balance });
+    }
+    
+    return c.json({ error: data.result?.error || "Account not found" }, 404);
+  } catch (err) {
+    return c.json({ error: "Failed to fetch balance" }, 500);
+  }
+});
+
 export default app;
