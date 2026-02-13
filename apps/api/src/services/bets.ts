@@ -43,6 +43,7 @@ import {
   getAttributesForUser,
   calculateWeightScore,
 } from "../db/models/user-attributes";
+import { getOrCreateUser } from "../db/models/users";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -100,6 +101,9 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
     throw new Error("Outcome does not belong to this market");
   }
 
+  // Get or create user record for foreign key constraint
+  const user = getOrCreateUser(input.userAddress);
+
   // Calculate weight score from user attributes
   const attributes = getAttributesForUser(input.userAddress);
   const weightScore = calculateWeightScore(attributes);
@@ -117,7 +121,7 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
 
   const bet = createBet({
     marketId: input.marketId,
-    userId: input.userAddress,
+    userId: user.id,
     outcome: "YES", // Legacy field - kept for backward compat
     outcomeId: input.outcomeId,
     amountDrops: input.amountDrops,
