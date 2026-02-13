@@ -210,13 +210,61 @@ markets.post("/:id/test-open", async (c) => {
 
   // Import updateMarket from db model
   const { updateMarket } = await import("../db/models/markets");
-  const updated = updateMarket(id, { status: "Open" });
+  
+  // Also set operator/issuer addresses from config if not set
+  const updates: Record<string, unknown> = { status: "Open" };
+  if (!market.operator_address && config.operatorAddress) {
+    updates.operatorAddress = config.operatorAddress;
+  }
+  if (!market.issuer_address && config.issuerAddress) {
+    updates.issuerAddress = config.issuerAddress;
+  }
+  
+  const updated = updateMarket(id, updates);
 
   return c.json({
     data: {
       id: updated?.id,
       status: updated?.status,
+      operatorAddress: updated?.operator_address,
       message: "Market opened for testing (no XRPL escrow)",
+    },
+  });
+});
+
+/**
+ * POST /markets/:id/fix-operator - Fix operator address for existing market
+ * WARNING: For development/demo only.
+ */
+markets.post("/:id/fix-operator", async (c) => {
+  const adminKey = c.req.header("X-Admin-Key");
+  if (!adminKey || adminKey !== config.adminApiKey) {
+    return c.json({ error: { code: "AUTH_REQUIRED", message: "Admin authentication required" } }, 401);
+  }
+
+  if (!config.operatorAddress) {
+    return c.json({ error: { code: "VALIDATION_ERROR", message: "XRPL_OPERATOR_ADDRESS not configured" } }, 400);
+  }
+
+  const id = c.req.param("id");
+  const market = getMarket(id);
+
+  if (!market) {
+    return c.json({ error: { code: "MARKET_NOT_FOUND", message: "Market not found" } }, 404);
+  }
+
+  const { updateMarket } = await import("../db/models/markets");
+  const updated = updateMarket(id, { 
+    operatorAddress: config.operatorAddress,
+    issuerAddress: config.issuerAddress || market.issuer_address,
+  });
+
+  return c.json({
+    data: {
+      id: updated?.id,
+      operatorAddress: updated?.operator_address,
+      issuerAddress: updated?.issuer_address,
+      message: "Operator address updated",
     },
   });
 });
