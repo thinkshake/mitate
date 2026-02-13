@@ -188,6 +188,40 @@ markets.post("/:id/confirm", zValidator("json", confirmMarketSchema), async (c) 
 });
 
 /**
+ * POST /markets/:id/test-open - Open market for testing (skip XRPL escrow)
+ * WARNING: For development/demo only. Bypasses real escrow creation.
+ */
+markets.post("/:id/test-open", async (c) => {
+  const adminKey = c.req.header("X-Admin-Key");
+  if (!adminKey || adminKey !== config.adminApiKey) {
+    return c.json({ error: { code: "AUTH_REQUIRED", message: "Admin authentication required" } }, 401);
+  }
+
+  const id = c.req.param("id");
+  const market = getMarket(id);
+
+  if (!market) {
+    return c.json({ error: { code: "MARKET_NOT_FOUND", message: "Market not found" } }, 404);
+  }
+
+  if (market.status !== "Draft") {
+    return c.json({ error: { code: "VALIDATION_ERROR", message: `Cannot open market in ${market.status} status` } }, 400);
+  }
+
+  // Import updateMarket from db model
+  const { updateMarket } = await import("../db/models/markets");
+  const updated = updateMarket(id, { status: "Open" });
+
+  return c.json({
+    data: {
+      id: updated?.id,
+      status: updated?.status,
+      message: "Market opened for testing (no XRPL escrow)",
+    },
+  });
+});
+
+/**
  * PATCH /markets/:id - Update market metadata (admin only)
  */
 markets.patch("/:id", zValidator("json", updateMarketSchema), async (c) => {

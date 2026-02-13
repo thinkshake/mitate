@@ -9,11 +9,12 @@
 ## Quick Reference: Market Lifecycle
 
 ```
-POST /markets          → Creates market in "Draft" status
-POST /markets/:id/confirm → Transitions to "Open" (after signing escrow tx)
-POST /markets/:id/close   → Transitions to "Closed" (stops betting)
-POST /markets/:id/resolve → Transitions to "Resolved" (declares winner)
-POST /markets/:id/payouts → Generates payout transactions
+POST /api/markets              → Creates market in "Draft" status
+POST /api/markets/:id/confirm  → Transitions to "Open" (after signing escrow tx)
+POST /api/markets/:id/test-open → Transitions to "Open" (skip escrow, for testing)
+POST /api/markets/:id/close    → Transitions to "Closed" (stops betting)
+POST /api/markets/:id/resolve  → Transitions to "Resolved" (declares winner)
+POST /api/markets/:id/payouts  → Generates payout transactions
 ```
 
 ---
@@ -48,7 +49,7 @@ Unlike YES/NO binary markets, multi-outcome markets support 2-5 outcomes.
 
 ```bash
 # Japanese political election (4 outcomes)
-curl -X POST http://localhost:3001/markets \
+curl -X POST http://localhost:3001/api/markets \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
@@ -87,7 +88,7 @@ curl -X POST http://localhost:3001/markets \
 Omit `outcomes` to create a traditional YES/NO market:
 
 ```bash
-curl -X POST http://localhost:3001/markets \
+curl -X POST http://localhost:3001/api/markets \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
@@ -108,7 +109,7 @@ After creating, the market is in "Draft" status. To open it:
 2. **Confirm** with the transaction hash:
 
 ```bash
-curl -X POST http://localhost:3001/markets/mkt_abc123/confirm \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/confirm \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
@@ -129,6 +130,26 @@ curl -X POST http://localhost:3001/markets/mkt_abc123/confirm \
 
 Now the market accepts bets!
 
+### Quick Open (Testing Only)
+
+For demos, skip XRPL escrow with test-open:
+
+```bash
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/test-open \
+  -H "X-Admin-Key: $ADMIN_KEY"
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "mkt_abc123",
+    "status": "Open",
+    "message": "Market opened for testing (no XRPL escrow)"
+  }
+}
+```
+
 ---
 
 ## 3. Place Bets
@@ -137,7 +158,7 @@ Users bet on outcomes via the frontend or API:
 
 ```bash
 # Bet 10 XRP on outcome "out_1" (村井嘉浩)
-curl -X POST http://localhost:3001/markets/mkt_abc123/bets \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/bets \
   -H "Content-Type: application/json" \
   -d '{
     "outcomeId": "out_1",
@@ -172,7 +193,7 @@ Outcome tokens can be traded on XRPL's native DEX before resolution.
 
 ```bash
 # Sell 5 outcome tokens for 8 XRP
-curl -X POST http://localhost:3001/markets/mkt_abc123/offers \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/offers \
   -H "Content-Type: application/json" \
   -d '{
     "outcome": "YES",
@@ -195,7 +216,7 @@ curl -X POST http://localhost:3001/markets/mkt_abc123/offers \
 ### View Trades
 
 ```bash
-curl http://localhost:3001/markets/mkt_abc123/trades
+curl http://localhost:3001/api/markets/mkt_abc123/trades
 ```
 
 ---
@@ -205,7 +226,7 @@ curl http://localhost:3001/markets/mkt_abc123/trades
 Stop accepting bets before resolution:
 
 ```bash
-curl -X POST http://localhost:3001/markets/mkt_abc123/close \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/close \
   -H "X-Admin-Key: $ADMIN_KEY"
 ```
 
@@ -226,7 +247,7 @@ curl -X POST http://localhost:3001/markets/mkt_abc123/close \
 Declare the winning outcome (requires multi-sign in production):
 
 ```bash
-curl -X POST http://localhost:3001/markets/mkt_abc123/resolve \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/resolve \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
@@ -252,7 +273,7 @@ curl -X POST http://localhost:3001/markets/mkt_abc123/resolve \
 Generate payout transactions for winners:
 
 ```bash
-curl -X POST http://localhost:3001/markets/mkt_abc123/payouts \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/payouts \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
@@ -282,7 +303,7 @@ curl -X POST http://localhost:3001/markets/mkt_abc123/payouts \
 After signing and submitting each payout tx:
 
 ```bash
-curl -X POST http://localhost:3001/markets/mkt_abc123/payouts/confirm \
+curl -X POST http://localhost:3001/api/markets/mkt_abc123/payouts/confirm \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
@@ -294,7 +315,7 @@ curl -X POST http://localhost:3001/markets/mkt_abc123/payouts/confirm \
 ### View Payout Status
 
 ```bash
-curl http://localhost:3001/markets/mkt_abc123/payouts
+curl http://localhost:3001/api/markets/mkt_abc123/payouts
 ```
 
 ---

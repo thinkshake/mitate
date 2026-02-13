@@ -30,4 +30,4 @@ phases:
     - name: 4-market-pages
       status: done
     - name: 5-user-features
-      status: in-progress
+      status: done
