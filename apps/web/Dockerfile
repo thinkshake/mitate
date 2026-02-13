@@ -1,17 +1,14 @@
 # syntax=docker/dockerfile:1
 
 FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-COPY package.json package-lock.json* bun.lock* ./
-RUN \
-  if [ -f bun.lock ]; then npm install -g bun && bun install --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
-  else npm install; \
-  fi
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Build
 FROM base AS builder
@@ -23,17 +20,16 @@ COPY --from=deps /app/node_modules ./node_modules
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
-RUN \
-  if [ -f bun.lock ]; then npm install -g bun && bun run build; \
-  else npm run build; \
-  fi
+RUN pnpm run build
 
 # Production
-FROM base AS runner
+FROM node:20-alpine AS runner
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+
+WORKDIR /app
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
