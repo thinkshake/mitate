@@ -98,15 +98,29 @@ export function BetPanel({
       )
 
       if (result.unsignedTx) {
-        // Submit payment transaction (trustSet is optional for XRP bets)
+        // Step 1: Submit TrustSet first (required for receiving minted tokens)
+        if (result.unsignedTx.trustSet) {
+          console.log("[BetPanel] Submitting TrustSet...")
+          const trustSetResult = await wallet.signAndSubmitTransaction(result.unsignedTx.trustSet)
+          if (!trustSetResult?.hash) {
+            throw new Error("TrustSetトランザクションが拒否されました")
+          }
+          console.log("[BetPanel] TrustSet confirmed:", trustSetResult.hash)
+        }
+
+        // Step 2: Submit Payment transaction
         const paymentTx = result.unsignedTx.payment
         if (!paymentTx) {
           throw new Error("Payment transaction not found")
         }
+        console.log("[BetPanel] Submitting Payment...")
         const txResult = await wallet.signAndSubmitTransaction(paymentTx)
         if (!txResult?.hash) {
-          throw new Error("トランザクションが拒否されました")
+          throw new Error("Paymentトランザクションが拒否されました")
         }
+        console.log("[BetPanel] Payment confirmed:", txResult.hash)
+
+        // Step 3: Confirm bet (triggers auto-mint on server)
         await confirmBet(marketId, result.bet.id, txResult.hash)
       }
 
