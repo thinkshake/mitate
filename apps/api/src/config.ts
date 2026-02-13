@@ -29,6 +29,9 @@ export const config = {
   /** Market issuer secret (for auto-minting tokens) */
   issuerSecret: process.env.XRPL_ISSUER_SECRET || "",
 
+  /** Market operator secret (for auto-payouts) */
+  operatorSecret: process.env.XRPL_OPERATOR_SECRET || "",
+
   /** Admin API key for privileged operations */
   adminApiKey: process.env.ADMIN_API_KEY || "",
 } as const;

@@ -304,6 +304,7 @@ markets.patch("/:id", zValidator("json", updateMarketSchema), async (c) => {
 
 /**
  * POST /markets/:id/resolve - Resolve a market (admin only)
+ * Creates payout records and auto-executes payouts if operator secret is set
  */
 markets.post("/:id/resolve", async (c) => {
   const adminKey = c.req.header("X-Admin-Key");
@@ -318,7 +319,13 @@ markets.post("/:id/resolve", async (c) => {
     return c.json({ error: { code: "VALIDATION_ERROR", message: "outcomeId is required" } }, 400);
   }
 
-  const { updateMarket } = await import("../db/models/markets");
+  const { updateMarket, getMarketById } = await import("../db/models/markets");
+  const { listConfirmedBetsByOutcomeId, getTotalEffectiveAmount } = await import("../db/models/bets");
+  const { createPayout, updatePayout } = await import("../db/models/payouts");
+  const { getUserById } = await import("../db/models/users");
+  const { buildOutcomePayoutPayment } = await import("../xrpl/tx-builder");
+  const { signAndSubmitWithOperator } = await import("../xrpl/client");
+
   const market = getMarket(id);
   if (!market) {
     return c.json({ error: { code: "MARKET_NOT_FOUND", message: "Market not found" } }, 404);
@@ -328,16 +335,102 @@ markets.post("/:id/resolve", async (c) => {
     return c.json({ error: { code: "VALIDATION_ERROR", message: `Cannot resolve market in ${market.status} status` } }, 400);
   }
 
+  // Update market status
   const updated = updateMarket(id, {
     status: "Resolved",
     resolvedOutcomeId: body.outcomeId,
   });
+
+  console.log("[resolve] Market resolved:", id, "winning outcome:", body.outcomeId);
+
+  // Calculate and execute payouts
+  const winningBets = listConfirmedBetsByOutcomeId(id, body.outcomeId);
+  const totalPool = BigInt(market.pool_total_drops);
+  const winningTotal = BigInt(getTotalEffectiveAmount(id, body.outcomeId));
+
+  console.log("[resolve] Total pool:", totalPool.toString(), "Winning total:", winningTotal.toString());
+  console.log("[resolve] Winning bets:", winningBets.length);
+
+  const payoutResults: { betId: string; userId: string; amount: string; txHash?: string; error?: string }[] = [];
+
+  if (winningTotal > 0n && winningBets.length > 0) {
+    for (const bet of winningBets) {
+      const betEffective = BigInt(bet.effective_amount_drops ?? bet.amount_drops);
+      const payoutAmount = (totalPool * betEffective) / winningTotal;
+
+      if (payoutAmount <= 0n) continue;
+
+      // Get user's wallet address
+      const user = getUserById(bet.user_id);
+      if (!user) {
+        console.error("[resolve] User not found for bet:", bet.id);
+        continue;
+      }
+
+      // Create payout record
+      const payout = createPayout({
+        marketId: id,
+        userId: bet.user_id,
+        amountDrops: payoutAmount.toString(),
+      });
+
+      console.log("[resolve] Created payout:", payout.id, "amount:", payoutAmount.toString(), "to:", user.wallet_address);
+
+      // Auto-execute payout if operator secret is configured
+      if (config.operatorSecret) {
+        try {
+          const payoutTx = buildOutcomePayoutPayment({
+            operatorAddress: config.operatorAddress,
+            destination: user.wallet_address,
+            amountDrops: payoutAmount.toString(),
+            marketId: id,
+            outcomeId: body.outcomeId,
+          });
+
+          console.log("[resolve] Executing payout for bet:", bet.id);
+          const result = await signAndSubmitWithOperator(payoutTx as any);
+          updatePayout(payout.id, { status: "Sent", payoutTx: result.hash });
+          console.log("[resolve] Payout successful:", result.hash);
+
+          payoutResults.push({
+            betId: bet.id,
+            userId: user.wallet_address,
+            amount: payoutAmount.toString(),
+            txHash: result.hash,
+          });
+        } catch (err) {
+          console.error("[resolve] Payout failed for bet:", bet.id, err);
+          updatePayout(payout.id, { status: "Failed" });
+          payoutResults.push({
+            betId: bet.id,
+            userId: user.wallet_address,
+            amount: payoutAmount.toString(),
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      } else {
+        console.log("[resolve] Skipping auto-payout (no XRPL_OPERATOR_SECRET)");
+        payoutResults.push({
+          betId: bet.id,
+          userId: user.wallet_address,
+          amount: payoutAmount.toString(),
+        });
+      }
+    }
+  }
+
+  // Update market to Paid if all payouts sent
+  if (config.operatorSecret && payoutResults.every(p => p.txHash)) {
+    updateMarket(id, { status: "Paid" });
+  }
 
   return c.json({
     data: {
       id: updated?.id,
       status: updated?.status,
       resolvedOutcomeId: updated?.resolved_outcome_id,
+      payoutsCreated: payoutResults.length,
+      payoutResults,
     },
   });
 });

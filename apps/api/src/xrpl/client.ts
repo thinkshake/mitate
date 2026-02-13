@@ -207,3 +207,38 @@ export async function signAndSubmitWithIssuer(
     result: txResult,
   };
 }
+
+/**
+ * Sign and submit a transaction using the operator wallet.
+ * Used for server-side payouts.
+ */
+export async function signAndSubmitWithOperator(
+  tx: SubmittableTransaction
+): Promise<{ hash: string; result: string }> {
+  if (!config.operatorSecret) {
+    throw new Error("XRPL_OPERATOR_SECRET not configured");
+  }
+
+  const client = await createXrplClient();
+  const wallet = Wallet.fromSeed(config.operatorSecret);
+
+  // Autofill transaction fields (Fee, Sequence, etc.)
+  const prepared = await client.autofill(tx);
+
+  // Sign the transaction
+  const signed = wallet.sign(prepared);
+
+  // Submit and wait for validation
+  const result = await client.submitAndWait(signed.tx_blob);
+
+  const txResult = (result.result.meta as { TransactionResult?: string })?.TransactionResult;
+  
+  if (txResult !== "tesSUCCESS") {
+    throw new Error(`Transaction failed: ${txResult}`);
+  }
+
+  return {
+    hash: result.result.hash,
+    result: txResult,
+  };
+}
