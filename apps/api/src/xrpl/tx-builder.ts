@@ -90,9 +90,9 @@ export function buildEscrowCreate(params: {
   destinationTag?: number;
 }): EscrowCreate {
   // XRPL requires either Condition or FinishAfter
-  // Set FinishAfter to now (allow immediate finish when market resolves)
+  // FinishAfter must be in the future, set to 1 minute from now
   const rippleEpochOffset = 946684800;
-  const nowRipple = Math.floor(Date.now() / 1000) - rippleEpochOffset;
+  const oneMinuteFromNow = Math.floor(Date.now() / 1000) + 60 - rippleEpochOffset;
   
   const tx: EscrowCreate = {
     TransactionType: "EscrowCreate",
@@ -100,7 +100,7 @@ export function buildEscrowCreate(params: {
     Destination: params.account, // self-escrow pool
     Amount: params.amountDrops,
     CancelAfter: params.cancelAfter,
-    FinishAfter: params.finishAfter ?? nowRipple, // Required by XRPL
+    FinishAfter: params.finishAfter ?? oneMinuteFromNow, // Must be in future
     Memos: [buildMemo("escrow_pool", params.marketId)],
   };
   if (params.destinationTag !== undefined)
