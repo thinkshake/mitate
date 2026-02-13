@@ -6,84 +6,296 @@
 
 ---
 
-## Pre-Demo Setup (Day Before)
+## Quick Reference: Market Lifecycle
 
-### 1. Install GemWallet Browser Extension
-
-Download from: https://gemwallet.app/
-
-- Install the Chrome/Firefox extension
-- Create a new wallet or import existing
-- **Switch to XRPL Testnet** in settings
-
-### 2. Fund Your Testnet Wallet
-
-Get free testnet XRP from the faucet:
 ```
-https://faucet.altnet.rippletest.net/accounts
+POST /markets          → Creates market in "Draft" status
+POST /markets/:id/confirm → Transitions to "Open" (after signing escrow tx)
+POST /markets/:id/close   → Transitions to "Closed" (stops betting)
+POST /markets/:id/resolve → Transitions to "Resolved" (declares winner)
+POST /markets/:id/payouts → Generates payout transactions
 ```
 
-You need ~100 XRP minimum (50 for reserve + betting funds).
+---
 
-### 3. Start Local Services
+## Pre-Demo Setup
+
+### 1. Start Services
 
 ```bash
 cd ~/dev/mitate
-
-# Start with Docker (recommended)
 docker-compose up -d
 
-# Or start manually:
-cd apps/api && bun run dev &
-cd apps/web && bun run dev &
+# Verify
+curl http://localhost:3001/health
 ```
 
-Verify services:
-- API: http://localhost:3001/health
-- Web: http://localhost:3000
-
-### 4. Create Demo Markets
-
-Use the API to seed markets:
+### 2. Set Admin Key
 
 ```bash
-# Market 1: Bitcoin price prediction
-curl -X POST http://localhost:3001/markets \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Will Bitcoin reach $100K by March 2026?",
-    "description": "Resolves YES if BTC/USD reaches $100,000 on any major exchange before March 31, 2026.",
-    "category": "crypto",
-    "bettingDeadline": "2026-03-30T23:59:59Z",
-    "resolutionTime": "2026-03-31T12:00:00Z"
-  }'
+export ADMIN_KEY="your-admin-key"  # From .env
+```
 
-# Market 2: Sports event
-curl -X POST http://localhost:3001/markets \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Will Japan win the 2026 World Cup?",
-    "description": "Resolves YES if Japan wins the FIFA World Cup 2026.",
-    "category": "sports",
-    "bettingDeadline": "2026-07-19T00:00:00Z",
-    "resolutionTime": "2026-07-19T23:59:59Z"
-  }'
+### 3. Fund Operator Wallet
 
-# Market 3: Tech prediction (good for demo - near deadline)
+Get testnet XRP: https://faucet.altnet.rippletest.net/accounts
+
+---
+
+## 1. Create Multi-Outcome Market
+
+Unlike YES/NO binary markets, multi-outcome markets support 2-5 outcomes.
+
+```bash
+# Japanese political election (4 outcomes)
 curl -X POST http://localhost:3001/markets \
   -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ADMIN_KEY" \
   -d '{
-    "title": "Will GPT-5 launch before April 2026?",
-    "description": "Resolves YES if OpenAI releases GPT-5 to the public before April 1, 2026.",
-    "category": "tech",
-    "bettingDeadline": "2026-03-31T23:59:59Z",
-    "resolutionTime": "2026-04-01T12:00:00Z"
+    "title": "2026年宮城県知事選挙の当選者予想",
+    "description": "2026年に予定される宮城県知事選挙の当選者を予測します。",
+    "category": "politics",
+    "categoryLabel": "政治",
+    "bettingDeadline": "2026-06-15T00:00:00Z",
+    "resolutionTime": "2026-06-20T00:00:00Z",
+    "outcomes": [
+      { "label": "村井嘉浩（現職）" },
+      { "label": "新人候補A" },
+      { "label": "新人候補B" },
+      { "label": "その他" }
+    ]
   }'
 ```
 
-### 5. Pre-Place Some Bets (Optional)
+**Response:**
+```json
+{
+  "id": "mkt_abc123",
+  "status": "Draft",
+  "outcomes": [
+    { "id": "out_1", "label": "村井嘉浩（現職）", "probability": 25 },
+    { "id": "out_2", "label": "新人候補A", "probability": 25 },
+    { "id": "out_3", "label": "新人候補B", "probability": 25 },
+    { "id": "out_4", "label": "その他", "probability": 25 }
+  ],
+  "escrowTx": { /* XRPL EscrowCreate transaction to sign */ }
+}
+```
 
-Place a few bets from a secondary wallet to show existing market activity.
+### Binary Market (YES/NO)
+
+Omit `outcomes` to create a traditional YES/NO market:
+
+```bash
+curl -X POST http://localhost:3001/markets \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ADMIN_KEY" \
+  -d '{
+    "title": "Will Bitcoin reach $100K by March 2026?",
+    "description": "Resolves YES if BTC/USD reaches $100,000.",
+    "category": "crypto",
+    "bettingDeadline": "2026-03-30T23:59:59Z"
+  }'
+```
+
+---
+
+## 2. Open Market (Draft → Open)
+
+After creating, the market is in "Draft" status. To open it:
+
+1. **Sign the escrowTx** returned from creation using operator wallet
+2. **Confirm** with the transaction hash:
+
+```bash
+curl -X POST http://localhost:3001/markets/mkt_abc123/confirm \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ADMIN_KEY" \
+  -d '{
+    "escrowTxHash": "ABC123...",
+    "escrowSequence": 12345
+  }'
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "mkt_abc123",
+    "status": "Open"
+  }
+}
+```
+
+Now the market accepts bets!
+
+---
+
+## 3. Place Bets
+
+Users bet on outcomes via the frontend or API:
+
+```bash
+# Bet 10 XRP on outcome "out_1" (村井嘉浩)
+curl -X POST http://localhost:3001/markets/mkt_abc123/bets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "outcomeId": "out_1",
+    "bettorAddress": "rUserWalletAddress...",
+    "amountDrops": "10000000"
+  }'
+```
+
+**Response:**
+```json
+{
+  "bet": {
+    "id": "bet_xyz",
+    "outcomeId": "out_1",
+    "amountDrops": "10000000",
+    "weightScore": 1.5,
+    "effectiveAmountDrops": "15000000"
+  },
+  "unsignedTx": { /* Payment tx for user to sign */ }
+}
+```
+
+The `effectiveAmountDrops` includes the user's weight multiplier.
+
+---
+
+## 4. Trade on DEX
+
+Outcome tokens can be traded on XRPL's native DEX before resolution.
+
+### Create Sell Offer
+
+```bash
+# Sell 5 outcome tokens for 8 XRP
+curl -X POST http://localhost:3001/markets/mkt_abc123/offers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "outcome": "YES",
+    "side": "sell",
+    "tokenAmount": "5",
+    "xrpAmountDrops": "8000000",
+    "userAddress": "rUserAddress..."
+  }'
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "offer": { /* XRPL OfferCreate tx to sign */ }
+  }
+}
+```
+
+### View Trades
+
+```bash
+curl http://localhost:3001/markets/mkt_abc123/trades
+```
+
+---
+
+## 5. Close Market
+
+Stop accepting bets before resolution:
+
+```bash
+curl -X POST http://localhost:3001/markets/mkt_abc123/close \
+  -H "X-Admin-Key: $ADMIN_KEY"
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "mkt_abc123",
+    "status": "Closed"
+  }
+}
+```
+
+---
+
+## 6. Resolve Market
+
+Declare the winning outcome (requires multi-sign in production):
+
+```bash
+curl -X POST http://localhost:3001/markets/mkt_abc123/resolve \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ADMIN_KEY" \
+  -d '{
+    "outcomeId": "out_1"
+  }'
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "id": "mkt_abc123",
+    "status": "Resolved",
+    "resolvedOutcomeId": "out_1"
+  }
+}
+```
+
+---
+
+## 7. Execute Payouts
+
+Generate payout transactions for winners:
+
+```bash
+curl -X POST http://localhost:3001/markets/mkt_abc123/payouts \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ADMIN_KEY" \
+  -d '{
+    "batchSize": 50
+  }'
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "payouts": [
+      {
+        "id": "pay_1",
+        "userId": "rWinnerAddress...",
+        "amountDrops": "25000000",
+        "payoutTx": { /* Payment tx to sign and submit */ }
+      }
+    ],
+    "count": 3
+  }
+}
+```
+
+### Confirm Each Payout
+
+After signing and submitting each payout tx:
+
+```bash
+curl -X POST http://localhost:3001/markets/mkt_abc123/payouts/confirm \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ADMIN_KEY" \
+  -d '{
+    "payoutId": "pay_1",
+    "txHash": "PAYOUT_TX_HASH..."
+  }'
+```
+
+### View Payout Status
+
+```bash
+curl http://localhost:3001/markets/mkt_abc123/payouts
+```
 
 ---
 
@@ -91,175 +303,86 @@ Place a few bets from a secondary wallet to show existing market activity.
 
 ### Opening (0:00 - 0:20)
 
-**Say:**
-> "MITATE is a prediction market powered entirely by XRPL. It uses 6 native XRPL features to create a trustless betting platform — no smart contracts, no EVM sidechain, pure XRPL."
+> "MITATE is a prediction market powered entirely by XRPL. It uses 6 native XRPL features — no smart contracts, pure XRPL."
 
-**Show:** Homepage with market listings
-
----
-
-### Connect Wallet (0:20 - 0:40)
-
-**Say:**
-> "First, let me connect my wallet."
-
-**Action:**
-1. Click **Connect Wallet** button in header
-2. GemWallet popup appears → Click **Connect**
-3. Show connected address in header
-
-**Say:**
-> "I'm using GemWallet connected to XRPL Testnet. My address is now shown in the header."
+**Show:** Homepage with multi-outcome markets
 
 ---
 
-### Select Market & Place Bet (0:40 - 1:20)
+### Connect & Bet (0:20 - 1:00)
 
-**Say:**
-> "Let's bet on whether Bitcoin will hit $100K. The current odds show 65% YES — meaning the market thinks it's likely."
+> "Let's bet on the Miyagi governor election. Four candidates — I'll bet 10 XRP on the incumbent."
 
-**Action:**
-1. Click on the Bitcoin market card
-2. Show the market detail page with:
-   - Current odds (YES vs NO percentages)
-   - Total pool size
-   - Recent bets list
+**Actions:**
+1. Connect GemWallet
+2. Select market → Select outcome → Enter amount
+3. Sign transaction in GemWallet
 
-**Say:**
-> "I'll bet 10 XRP on YES."
-
-**Action:**
-1. Enter `10` in the amount field
-2. Select `YES` outcome
-3. Click **Place Bet**
-4. GemWallet popup appears → Review transaction → **Sign**
-
-**Say:**
-> "GemWallet shows me exactly what I'm signing — a Payment transaction to the escrow pool with MITATE memo data."
-
-**After signing:**
-> "Done! My bet is now locked in XRPL Escrow and I received YES tokens representing my position."
+> "My bet is locked in XRPL Escrow. I received outcome tokens representing my position."
 
 ---
 
-### Show On-Chain Verification (1:20 - 1:50)
+### Show XRPL Features (1:00 - 2:00)
 
-**Say:**
-> "Everything is verifiable on-chain. Let me show you."
+> "Six XRPL features power this:"
 
-**Action:**
-1. Click the transaction hash link
-2. XRPL Explorer opens showing the transaction
-3. Point out the **Memo** field with MITATE data
+1. **Escrow** — "Bets locked with time-based deadline"
+2. **Issued Currency** — "Each outcome has its own token"
+3. **Trust Lines** — "Users opt-in to hold outcome tokens"
+4. **DEX** — "Trade positions before resolution"
+5. **Multi-Sign** — "Resolution requires committee approval"
+6. **Memo** — "All transactions carry audit data"
 
-**Say:**
-> "See this memo? It contains the market ID and outcome I bet on. Anyone can verify this transaction on the XRPL ledger."
-
----
-
-### XRPL Features Overview (1:50 - 2:30)
-
-**Say:**
-> "Let me quickly highlight the 6 XRPL features we use:"
-
-Show each as you mention:
-
-1. **Escrow** — "All bets are locked in time-locked escrow until market resolution"
-2. **Issued Currency** — "YES and NO tokens are XRPL issued currencies"
-3. **Trust Lines** — "Users establish trust lines to hold outcome tokens"
-4. **DEX** — "Tokens can be traded on XRPL's native DEX before resolution"
-5. **Multi-Sign** — "Market resolution requires 2-of-3 signatures to prevent manipulation"
-6. **Memo** — "Every transaction carries structured memo data for transparency"
+**Show:** Transaction on XRPL Explorer with Memo field
 
 ---
 
-### Resolution & Payout (2:30 - 2:50)
+### Resolution & Payout (2:00 - 2:50)
 
-**Say:**
-> "When the market resolves, the multi-sign committee submits the outcome. Winners share the entire pool proportionally — a parimutuel system, like horse racing."
+> "When the election ends, the multi-sign committee declares the winner. Winners share the pool proportionally — parimutuel, like horse racing."
 
-**Show:** Portfolio page with bet history (if you pre-placed bets)
-
-**Say:**
-> "If I bet 10 XRP and the total YES pool is 100 XRP, I own 10% of winning payouts."
+**Show:** Portfolio page with positions
 
 ---
 
 ### Closing (2:50 - 3:00)
 
-**Say:**
-> "MITATE shows that XRPL's unique primitives — Escrow, Issued Currency, Trust Lines, DEX, Multi-Sign, and Memos — can power a complete prediction market with no smart contracts. All data is on-chain, all transactions are verifiable."
-
-**Show:** GitHub repo URL
+> "MITATE proves XRPL's native primitives can power a complete prediction market — all verifiable on-chain."
 
 ---
 
-## Key Points to Emphasize
+## XRPL Features Summary
 
 | Feature | How MITATE Uses It |
 |---------|-------------------|
-| **Escrow** | Locks bet funds with time-based release |
-| **Issued Currency** | YES/NO outcome tokens per market |
+| **Escrow** | Time-locked XRP pool for bets |
+| **Issued Currency** | Outcome tokens (multi-outcome supported) |
 | **Trust Line** | Required to hold outcome tokens |
 | **DEX** | Secondary trading of positions |
-| **Multi-Sign** | 2-of-3 resolution committee |
-| **Memo** | Structured data in every transaction |
+| **Multi-Sign** | Resolution governance |
+| **Memo** | Structured audit trail |
 
 ---
 
 ## Troubleshooting
 
-### GemWallet Not Detected
-- Refresh the page after installing
-- Make sure you're on Chrome/Firefox (not Safari)
-- Check that the extension is enabled
+### Market Stuck in Draft
+- Sign the `escrowTx` returned from POST /markets
+- Call POST /markets/:id/confirm with the tx hash
 
-### "Wrong Network" Error
-- Open GemWallet settings
-- Switch from Mainnet to **Testnet**
-- Reconnect wallet
+### "Cannot resolve market" Error
+- Market must be "Closed" first
+- Call POST /markets/:id/close before resolving
 
-### Transaction Fails
-- Check you have enough XRP (10+ reserve + bet amount)
-- Refresh and try again
-- Check API logs: `docker-compose logs api`
-
-### Markets Not Loading
-- Verify API is running: `curl http://localhost:3001/health`
-- Check CORS settings in API config
-- Look for errors in browser console
+### Payouts Not Working
+- Market must be "Resolved" first
+- Check operator wallet has enough XRP for payouts
 
 ---
 
 ## Backup Plan
 
 If live demo fails:
-
-1. **Show code walkthrough** — Open `apps/api/src/xrpl/tx-builder.ts` and explain transaction construction
-2. **Show pre-recorded video** — Have a screen recording of the happy path ready
-3. **Walk through architecture** — Use the ADR.md document to explain design decisions
-
----
-
-## Files to Have Open
-
-Keep these tabs ready:
-
-1. http://localhost:3000 — MITATE frontend
-2. https://testnet.xrpl.org — XRPL Explorer
-3. `~/dev/mitate/docs/ADR.md` — Architecture decisions
-4. GemWallet extension popup
-
----
-
-## Demo Checklist
-
-Before going on stage:
-
-- [ ] Docker services running (`docker-compose ps`)
-- [ ] GemWallet installed and on Testnet
-- [ ] Wallet funded with 100+ testnet XRP
-- [ ] Demo markets created
-- [ ] Browser tabs arranged
-- [ ] Screen sharing tested
-- [ ] Backup video ready
+1. **Show code** — `apps/api/src/xrpl/tx-builder.ts`
+2. **Show pre-recorded video**
+3. **Walk through ADR.md** — Architecture decisions
