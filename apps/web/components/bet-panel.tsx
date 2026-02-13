@@ -98,7 +98,12 @@ export function BetPanel({
       )
 
       if (result.unsignedTx) {
-        const txResult = await wallet.signAndSubmitTransaction(result.unsignedTx)
+        // Submit payment transaction (trustSet is optional for XRP bets)
+        const paymentTx = result.unsignedTx.payment
+        if (!paymentTx) {
+          throw new Error("Payment transaction not found")
+        }
+        const txResult = await wallet.signAndSubmitTransaction(paymentTx)
         if (!txResult?.hash) {
           throw new Error("トランザクションが拒否されました")
         }

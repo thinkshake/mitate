@@ -144,7 +144,10 @@ export interface PlaceBetResponse {
   bet: Bet;
   weightScore: number;
   effectiveAmountDrops: string;
-  unsignedTx: unknown;
+  unsignedTx: {
+    trustSet?: unknown;
+    payment: unknown;
+  };
 }
 
 export async function placeBet(
