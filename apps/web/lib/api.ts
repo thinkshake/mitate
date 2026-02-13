@@ -19,7 +19,7 @@ export interface Market {
   description: string;
   category: string;
   categoryLabel: string;
-  status: "pending" | "open" | "closed" | "resolved";
+  status: "Draft" | "Open" | "Closed" | "Resolved" | "Paid" | "Canceled" | "Stalled";
   bettingDeadline: string;
   resolutionTime: string | null;
   totalPoolDrops: string;
@@ -280,6 +280,69 @@ export async function getPayoutsForMarket(marketId: string): Promise<{
 
 export async function getPayoutsForUser(address: string): Promise<Payout[]> {
   return apiFetch<Payout[]>(`/users/${address}/payouts`);
+}
+
+// ── Admin ─────────────────────────────────────────────────────────
+
+function adminHeaders(adminKey: string): HeadersInit {
+  return { "X-Admin-Key": adminKey };
+}
+
+export async function adminGetMarkets(adminKey: string): Promise<Market[]> {
+  const result = await apiFetch<{ markets: Market[] } | Market[]>("/markets", {
+    headers: adminHeaders(adminKey),
+  });
+  return Array.isArray(result) ? result : result.markets;
+}
+
+export async function adminCreateMarket(
+  adminKey: string,
+  body: {
+    title: string;
+    description: string;
+    category?: string;
+    categoryLabel?: string;
+    bettingDeadline: string;
+    outcomes: { label: string }[];
+  },
+): Promise<Market> {
+  return apiFetch<Market>("/markets", {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminTestOpen(
+  adminKey: string,
+  marketId: string,
+): Promise<{ id: string; status: string; message: string }> {
+  return apiFetch(`/markets/${marketId}/test-open`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+  });
+}
+
+export async function adminCloseMarket(
+  adminKey: string,
+  marketId: string,
+): Promise<{ id: string; status: string }> {
+  return apiFetch(`/markets/${marketId}/close`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+  });
+}
+
+export async function adminResolveMarket(
+  adminKey: string,
+  marketId: string,
+  outcomeId: string,
+): Promise<{ id: string; status: string; resolvedOutcomeId: string }> {
+  return apiFetch(`/markets/${marketId}/resolve`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify({ outcomeId }),
+  });
 }
 
 // ── Formatting Helpers ─────────────────────────────────────────────

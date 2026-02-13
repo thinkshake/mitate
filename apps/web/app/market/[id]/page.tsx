@@ -172,7 +172,7 @@ export default function MarketDetailPage({ params }: PageProps) {
 
         {/* Right Column (Sidebar) */}
         <div className="flex w-full shrink-0 flex-col gap-6 lg:w-[38%]">
-          {market.status === "open" ? (
+          {market.status === "Open" ? (
             <BetPanel
               marketId={id}
               selectedOutcome={selectedOutcome}
