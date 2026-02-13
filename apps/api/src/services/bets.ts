@@ -43,7 +43,7 @@ import {
   getAttributesForUser,
   calculateWeightScore,
 } from "../db/models/user-attributes";
-import { getOrCreateUser } from "../db/models/users";
+import { getOrCreateUser, getUserById } from "../db/models/users";
 import { signAndSubmitWithIssuer } from "../xrpl/client";
 import type { Payment } from "xrpl";
 
@@ -261,13 +261,22 @@ export function buildMintTx(betId: string): unknown | null {
     return null;
   }
 
+  // Get user's wallet address (bet.user_id is the DB user ID, not the XRPL address)
+  const user = getUserById(bet.user_id);
+  if (!user) {
+    console.error("[buildMintTx] User not found:", bet.user_id);
+    return null;
+  }
+  const destinationAddress = user.wallet_address;
+  console.log("[buildMintTx] Destination address:", destinationAddress);
+
   // Multi-outcome: use outcome currency code
   if (bet.outcome_id) {
     const outcome = getOutcomeById(bet.outcome_id);
     if (outcome?.currency_code) {
       return buildOutcomeMintPayment({
         issuerAddress: config.issuerAddress,
-        destination: bet.user_id,
+        destination: destinationAddress,
         marketId: bet.market_id,
         outcomeId: bet.outcome_id,
         currencyCode: outcome.currency_code,
@@ -279,7 +288,7 @@ export function buildMintTx(betId: string): unknown | null {
   // Legacy YES/NO fallback
   return buildMintPayment({
     issuerAddress: config.issuerAddress,
-    destination: bet.user_id,
+    destination: destinationAddress,
     marketId: bet.market_id,
     outcome: bet.outcome as BetOutcome,
     tokenValue: bet.amount_drops,
