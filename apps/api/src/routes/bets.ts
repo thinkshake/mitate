@@ -85,9 +85,11 @@ bets.post("/markets/:marketId/bets", zValidator("json", placeBetSchema), async (
  * POST /markets/:marketId/bets/:betId/confirm - Confirm bet after XRPL transaction
  */
 bets.post("/markets/:marketId/bets/:betId/confirm", zValidator("json", confirmBetSchema), async (c) => {
+  console.log("[confirmBet route] Request received");
   const marketId = c.req.param("marketId");
   const betId = c.req.param("betId");
   const body = c.req.valid("json");
+  console.log("[confirmBet route] marketId:", marketId, "betId:", betId, "txHash:", body.txHash?.slice(0, 16) + "...");
 
   const bet = getBet(betId);
   if (!bet) {
