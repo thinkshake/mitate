@@ -44,6 +44,8 @@ import {
   calculateWeightScore,
 } from "../db/models/user-attributes";
 import { getOrCreateUser } from "../db/models/users";
+import { signAndSubmitWithIssuer } from "../xrpl/client";
+import type { Payment } from "xrpl";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -223,6 +225,23 @@ export async function confirmBet(input: ConfirmBetInput): Promise<Bet> {
   const escrow = getEscrowByMarket(market.id);
   if (escrow) {
     addToEscrow(escrow.id, bet.amount_drops);
+  }
+
+  // Auto-mint position tokens if issuer secret is configured
+  if (config.issuerSecret) {
+    try {
+      const mintTx = buildMintTx(bet.id);
+      if (mintTx) {
+        console.log("[confirmBet] Auto-minting tokens for bet:", bet.id);
+        const result = await signAndSubmitWithIssuer(mintTx as Payment);
+        updateBet(bet.id, { mintTx: result.hash });
+        console.log("[confirmBet] Mint successful:", result.hash);
+      }
+    } catch (err) {
+      // Log error but don't fail the bet confirmation
+      console.error("[confirmBet] Auto-mint failed:", err);
+      // Bet is still confirmed, tokens can be minted manually later
+    }
   }
 
   return getBetById(bet.id)!;

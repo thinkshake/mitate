@@ -26,6 +26,9 @@ export const config = {
   /** Market issuer address */
   issuerAddress: process.env.XRPL_ISSUER_ADDRESS || "",
 
+  /** Market issuer secret (for auto-minting tokens) */
+  issuerSecret: process.env.XRPL_ISSUER_SECRET || "",
+
   /** Admin API key for privileged operations */
   adminApiKey: process.env.ADMIN_API_KEY || "",
 } as const;

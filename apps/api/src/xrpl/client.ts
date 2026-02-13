@@ -1,4 +1,4 @@
-import { Client, type ServerInfoResponse } from "xrpl";
+import { Client, Wallet, type ServerInfoResponse, type SubmittableTransaction } from "xrpl";
 import { config } from "../config";
 
 let wsClient: Client | null = null;
@@ -171,4 +171,39 @@ export async function getTransaction(txHash: string) {
     transaction: txHash,
     binary: false,
   });
+}
+
+/**
+ * Sign and submit a transaction using the issuer wallet.
+ * Used for server-side token minting.
+ */
+export async function signAndSubmitWithIssuer(
+  tx: SubmittableTransaction
+): Promise<{ hash: string; result: string }> {
+  if (!config.issuerSecret) {
+    throw new Error("XRPL_ISSUER_SECRET not configured");
+  }
+
+  const client = await createXrplClient();
+  const wallet = Wallet.fromSeed(config.issuerSecret);
+
+  // Autofill transaction fields (Fee, Sequence, etc.)
+  const prepared = await client.autofill(tx);
+
+  // Sign the transaction
+  const signed = wallet.sign(prepared);
+
+  // Submit and wait for validation
+  const result = await client.submitAndWait(signed.tx_blob);
+
+  const txResult = (result.result.meta as { TransactionResult?: string })?.TransactionResult;
+  
+  if (txResult !== "tesSUCCESS") {
+    throw new Error(`Transaction failed: ${txResult}`);
+  }
+
+  return {
+    hash: result.result.hash,
+    result: txResult,
+  };
 }
