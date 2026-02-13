@@ -228,9 +228,11 @@ export async function confirmBet(input: ConfirmBetInput): Promise<Bet> {
   }
 
   // Auto-mint position tokens if issuer secret is configured
+  console.log("[confirmBet] Checking issuer secret...", config.issuerSecret ? "SET" : "NOT SET");
   if (config.issuerSecret) {
     try {
       const mintTx = buildMintTx(bet.id);
+      console.log("[confirmBet] mintTx built:", mintTx ? "YES" : "NO");
       if (mintTx) {
         console.log("[confirmBet] Auto-minting tokens for bet:", bet.id);
         const result = await signAndSubmitWithIssuer(mintTx as Payment);
@@ -242,6 +244,8 @@ export async function confirmBet(input: ConfirmBetInput): Promise<Bet> {
       console.error("[confirmBet] Auto-mint failed:", err);
       // Bet is still confirmed, tokens can be minted manually later
     }
+  } else {
+    console.log("[confirmBet] Skipping auto-mint (no XRPL_ISSUER_SECRET)");
   }
 
   return getBetById(bet.id)!;
