@@ -26,18 +26,27 @@ export interface OutcomeInsert {
 // ── Currency Code Generation ───────────────────────────────────────
 
 /**
- * Generate a unique 3-character XRPL currency code for an outcome.
- * Format: first char from market prefix + 2 chars from outcome index.
- * XRPL allows 3-char ASCII codes (standard) or 40-hex (non-standard).
+ * Generate a unique XRPL currency code for an outcome.
+ * Uses 160-bit (20-byte) non-standard format to include market ID.
+ * Format: 0x02 prefix + "{shortMarketId}:{outcomeChar}"
+ * 
+ * Examples: "mlk4:A", "mlk4:B" → unique per market
  */
 export function generateCurrencyCode(
   marketId: string,
   outcomeIndex: number
 ): string {
-  // Use uppercase letters: M + market hash char + outcome letter (A, B, C...)
-  const marketChar = marketId.replace(/[^a-zA-Z0-9]/g, "").charAt(4).toUpperCase() || "X";
+  // Extract short ID from market ID (e.g., "mkt_mlk4xyz" → "mlk4xyz")
+  const shortId = marketId.replace("mkt_", "").slice(0, 8);
   const outcomeChar = String.fromCharCode(65 + outcomeIndex); // A, B, C, D, E
-  return `M${marketChar}${outcomeChar}`;
+  const label = `${shortId}:${outcomeChar}`;
+  
+  // Encode as 20-byte hex (XRPL non-standard currency format)
+  const buf = Buffer.alloc(20, 0);
+  buf[0] = 0x02; // non-standard currency marker (required by XRPL)
+  const encoded = Buffer.from(label, "utf-8");
+  encoded.copy(buf, 1, 0, Math.min(encoded.length, 19));
+  return buf.toString("hex").toUpperCase();
 }
 
 // ── Queries ────────────────────────────────────────────────────────
