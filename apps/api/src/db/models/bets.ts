@@ -232,3 +232,15 @@ export function getStalePendingBets(olderThanMinutes: number): Bet[] {
      AND datetime(placed_at) < datetime('now', '-' || ? || ' minutes')`
   ).all(olderThanMinutes) as Bet[];
 }
+
+/**
+ * Get confirmed bets that need token minting (no mint_tx yet).
+ */
+export function getPendingMints(): Bet[] {
+  const db = getDb();
+  return db.query(
+    `SELECT * FROM bets 
+     WHERE status = 'Confirmed' AND mint_tx IS NULL
+     ORDER BY placed_at ASC`
+  ).all() as Bet[];
+}

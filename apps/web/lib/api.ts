@@ -373,6 +373,52 @@ export async function adminResolveMarket(
   });
 }
 
+// ── Token Minting ─────────────────────────────────────────────────
+
+export interface PendingMint {
+  id: string;
+  marketId: string;
+  marketTitle: string;
+  userId: string;
+  outcomeId: string | null;
+  outcomeLabel: string;
+  amountDrops: string;
+  effectiveAmountDrops: string | null;
+  weightScore: number;
+  paymentTx: string | null;
+  placedAt: string;
+}
+
+export async function adminGetPendingMints(
+  adminKey: string,
+): Promise<{ pendingMints: PendingMint[]; count: number }> {
+  return apiFetch("/admin/mints/pending", {
+    headers: adminHeaders(adminKey),
+  });
+}
+
+export async function adminPrepareMint(
+  adminKey: string,
+  betId: string,
+): Promise<{ betId: string; mintTx: unknown; issuerAddress: string }> {
+  return apiFetch(`/admin/mints/${betId}/prepare`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+  });
+}
+
+export async function adminConfirmMint(
+  adminKey: string,
+  betId: string,
+  mintTxHash: string,
+): Promise<{ betId: string; mintTx: string; status: string }> {
+  return apiFetch(`/admin/mints/${betId}/confirm`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify({ mintTxHash }),
+  });
+}
+
 // ── Formatting Helpers ─────────────────────────────────────────────
 
 export function dropsToXrp(drops: string | number): number {

@@ -30,13 +30,16 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/contexts/WalletContext";
-import type { Market, CreateMarketResponse } from "@/lib/api";
+import type { Market, CreateMarketResponse, PendingMint } from "@/lib/api";
 import {
   adminGetMarkets,
   adminCreateMarket,
   adminConfirmMarket,
   adminCloseMarket,
   adminResolveMarket,
+  adminGetPendingMints,
+  adminPrepareMint,
+  adminConfirmMint,
   fetchCategories,
   dropsToXrp,
 } from "@/lib/api";
@@ -821,6 +824,156 @@ export default function AdminPage() {
           <MarketTable markets={markets} adminKey={adminKey} onAction={loadMarkets} />
         </CardContent>
       </Card>
+
+      {/* Pending Mints Section */}
+      <PendingMintsCard adminKey={adminKey} />
     </div>
+  );
+}
+
+// ── Pending Mints Card ──────────────────────────────────────────
+
+function PendingMintsCard({ adminKey }: { adminKey: string }) {
+  const { toast } = useToast();
+  const [pendingMints, setPendingMints] = useState<PendingMint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [mintingId, setMintingId] = useState<string | null>(null);
+
+  const loadPendingMints = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await adminGetPendingMints(adminKey);
+      setPendingMints(data.pendingMints);
+    } catch (err) {
+      console.error("Failed to load pending mints:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [adminKey]);
+
+  useEffect(() => {
+    loadPendingMints();
+  }, [loadPendingMints]);
+
+  async function handleMint(mint: PendingMint) {
+    // Check GemWallet
+    const installedResult = await isInstalled();
+    if (!installedResult.result?.isInstalled) {
+      toast({ title: "GemWallet未インストール", description: "GemWalletをインストールしてください", variant: "destructive" });
+      return;
+    }
+
+    setMintingId(mint.id);
+    try {
+      // Get mint transaction
+      const prepareResult = await adminPrepareMint(adminKey, mint.id);
+      
+      // Sign and submit with GemWallet
+      const submitResult = await submitTransaction({
+        transaction: prepareResult.mintTx as Parameters<typeof submitTransaction>[0]["transaction"],
+      });
+
+      if (submitResult.type === "reject") {
+        throw new Error("トランザクションが拒否されました");
+      }
+
+      const txHash = submitResult.result?.hash;
+      if (!txHash) {
+        throw new Error("トランザクションハッシュが取得できませんでした");
+      }
+
+      // Confirm mint
+      await adminConfirmMint(adminKey, mint.id, txHash);
+      
+      toast({ title: "成功", description: "トークンを発行しました！" });
+      loadPendingMints();
+    } catch (err) {
+      toast({
+        title: "発行エラー",
+        description: err instanceof Error ? err.message : "発行に失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setMintingId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>トークン発行待ち</CardTitle>
+            <CardDescription>ベット確定後のポジショントークン発行</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            {pendingMints.length > 0 && (
+              <Badge variant="secondary">{pendingMints.length}件</Badge>
+            )}
+            <Button variant="ghost" size="sm" onClick={loadPendingMints} disabled={loading}>
+              {loading ? "読込中..." : "更新"}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {pendingMints.length === 0 ? (
+          <p className="text-muted-foreground py-8 text-center text-sm">
+            発行待ちのトークンはありません
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="px-3 py-2 font-medium">ベットID</th>
+                  <th className="px-3 py-2 font-medium">マーケット</th>
+                  <th className="px-3 py-2 font-medium">アウトカム</th>
+                  <th className="px-3 py-2 font-medium">ユーザー</th>
+                  <th className="px-3 py-2 font-medium">金額</th>
+                  <th className="px-3 py-2 font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMints.map((mint) => (
+                  <tr key={mint.id} className="border-b">
+                    <td className="text-muted-foreground px-3 py-2 font-mono text-xs">
+                      {mint.id.slice(0, 8)}
+                    </td>
+                    <td className="max-w-[150px] truncate px-3 py-2" title={mint.marketTitle}>
+                      {mint.marketTitle}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline">{mint.outcomeLabel}</Badge>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {mint.userId.slice(0, 8)}...
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {dropsToXrp(mint.effectiveAmountDrops || mint.amountDrops)} XRP
+                      {mint.weightScore !== 1 && (
+                        <span className="text-muted-foreground text-xs ml-1">
+                          (×{mint.weightScore.toFixed(1)})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handleMint(mint)}
+                        disabled={mintingId === mint.id}
+                      >
+                        {mintingId === mint.id ? "発行中..." : "🪙 発行"}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
