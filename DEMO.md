@@ -9,19 +9,38 @@
 ## Quick Reference: Market Lifecycle
 
 ```
-POST /api/markets              → Creates market in "Draft" status
-POST /api/markets/:id/confirm  → Transitions to "Open" (after signing escrow tx)
-POST /api/markets/:id/test-open → Transitions to "Open" (skip escrow, for testing)
-POST /api/markets/:id/close    → Transitions to "Closed" (stops betting)
-POST /api/markets/:id/resolve  → Transitions to "Resolved" (declares winner)
-POST /api/markets/:id/payouts  → Generates payout transactions
+1. CREATE    POST /api/markets              → Draft status
+2. OPEN      POST /api/markets/:id/test-open → Open status (accepts bets)
+3. BET       POST /api/markets/:id/bets     → Users place bets
+4. CLOSE     POST /api/markets/:id/close    → Closed status (no more bets)
+5. RESOLVE   POST /api/markets/:id/resolve  → Resolved status (winner declared)
+6. PAYOUT    POST /api/markets/:id/payouts  → Generate payout transactions
+7. CONFIRM   POST /api/markets/:id/payouts/confirm → Confirm each payout
 ```
 
 ---
 
 ## Pre-Demo Setup
 
-### 1. Start Services
+### 1. Configure Environment
+
+Create `apps/api/.env`:
+```bash
+PORT=3001
+NODE_ENV=development
+DATABASE_PATH=/data/mitate.db
+XRPL_RPC_URL=https://s.altnet.rippletest.net:51234
+XRPL_WS_URL=wss://s.altnet.rippletest.net:51233
+XRPL_NETWORK_ID=1
+
+# Get from testnet faucet: https://faucet.altnet.rippletest.net/accounts
+XRPL_OPERATOR_ADDRESS=rYourOperatorAddress...
+XRPL_ISSUER_ADDRESS=rYourIssuerAddress...
+
+ADMIN_API_KEY=your-secure-admin-key
+```
+
+### 2. Start Services
 
 ```bash
 cd ~/dev/mitate
@@ -31,292 +50,133 @@ docker-compose up -d
 curl http://localhost:3001/health
 ```
 
-### 2. Set Admin Key
+### 3. Fund Wallets
 
+Get testnet XRP for operator wallet:
 ```bash
-export ADMIN_KEY="your-admin-key"  # From .env
-```
-
-### 3. Fund Operator Wallet
-
-Get testnet XRP: https://faucet.altnet.rippletest.net/accounts
-
----
-
-## 1. Create Multi-Outcome Market
-
-Unlike YES/NO binary markets, multi-outcome markets support 2-5 outcomes.
-
-```bash
-# Japanese political election (4 outcomes)
-curl -X POST http://localhost:3001/api/markets \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Key: $ADMIN_KEY" \
-  -d '{
-    "title": "2026年宮城県知事選挙の当選者予想",
-    "description": "2026年に予定される宮城県知事選挙の当選者を予測します。",
-    "category": "politics",
-    "categoryLabel": "政治",
-    "bettingDeadline": "2026-06-15T00:00:00Z",
-    "resolutionTime": "2026-06-20T00:00:00Z",
-    "outcomes": [
-      { "label": "村井嘉浩（現職）" },
-      { "label": "新人候補A" },
-      { "label": "新人候補B" },
-      { "label": "その他" }
-    ]
-  }'
-```
-
-**Response:**
-```json
-{
-  "id": "mkt_abc123",
-  "status": "Draft",
-  "outcomes": [
-    { "id": "out_1", "label": "村井嘉浩（現職）", "probability": 25 },
-    { "id": "out_2", "label": "新人候補A", "probability": 25 },
-    { "id": "out_3", "label": "新人候補B", "probability": 25 },
-    { "id": "out_4", "label": "その他", "probability": 25 }
-  ],
-  "escrowTx": { /* XRPL EscrowCreate transaction to sign */ }
-}
-```
-
-### Binary Market (YES/NO)
-
-Omit `outcomes` to create a traditional YES/NO market:
-
-```bash
-curl -X POST http://localhost:3001/api/markets \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Key: $ADMIN_KEY" \
-  -d '{
-    "title": "Will Bitcoin reach $100K by March 2026?",
-    "description": "Resolves YES if BTC/USD reaches $100,000.",
-    "category": "crypto",
-    "bettingDeadline": "2026-03-30T23:59:59Z"
-  }'
+curl -X POST https://faucet.altnet.rippletest.net/accounts
 ```
 
 ---
 
-## 2. Open Market (Draft → Open)
+## Complete Flow: Admin UI + API
 
-After creating, the market is in "Draft" status. To open it:
+### Step 1: Create Market (Admin UI)
 
-1. **Sign the escrowTx** returned from creation using operator wallet
-2. **Confirm** with the transaction hash:
+1. Go to `http://localhost:3000/admin`
+2. Enter admin key → Login
+3. Click "マーケット作成"
+4. Fill form:
+   - Title: 宮城県知事選挙の当選者予想
+   - Description: 2026年の宮城県知事選挙の当選者を予測
+   - Category: 政治
+   - Deadline: (future date)
+   - Outcomes: 村井嘉浩, 新人候補A, 新人候補B, その他
+5. Click "作成"
+
+### Step 2: Open Market (Admin UI)
+
+Click "Test Open" button next to the Draft market.
+
+### Step 3: Place Bets (User Flow)
+
+1. Go to `http://localhost:3000`
+2. Connect GemWallet (must be on Testnet)
+3. Click a market → Select outcome → Enter amount
+4. Click "予測する" → Sign in GemWallet
+
+### Step 4: Close Market (Admin UI)
+
+Click "Close" button next to the Open market.
+
+### Step 5: Resolve Market (Admin UI)
+
+1. Click "Resolve" button
+2. Select winning outcome from dropdown
+3. Confirm
+
+### Step 6: Execute Payouts (API)
 
 ```bash
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/confirm \
+# Generate payout transactions
+curl -X POST http://localhost:3001/api/markets/YOUR_MARKET_ID/payouts \
   -H "Content-Type: application/json" \
-  -H "X-Admin-Key: $ADMIN_KEY" \
-  -d '{
-    "escrowTxHash": "ABC123...",
-    "escrowSequence": 12345
-  }'
+  -H "X-Admin-Key: YOUR_ADMIN_KEY" \
+  -d '{"batchSize": 50}'
 ```
 
-**Response:**
-```json
-{
-  "data": {
-    "id": "mkt_abc123",
-    "status": "Open"
-  }
-}
-```
-
-Now the market accepts bets!
-
-### Quick Open (Testing Only)
-
-For demos, skip XRPL escrow with test-open:
-
-```bash
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/test-open \
-  -H "X-Admin-Key: $ADMIN_KEY"
-```
-
-**Response:**
-```json
-{
-  "data": {
-    "id": "mkt_abc123",
-    "status": "Open",
-    "message": "Market opened for testing (no XRPL escrow)"
-  }
-}
-```
-
----
-
-## 3. Place Bets
-
-Users bet on outcomes via the frontend or API:
-
-```bash
-# Bet 10 XRP on outcome "out_1" (村井嘉浩)
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/bets \
-  -H "Content-Type: application/json" \
-  -d '{
-    "outcomeId": "out_1",
-    "bettorAddress": "rUserWalletAddress...",
-    "amountDrops": "10000000"
-  }'
-```
-
-**Response:**
-```json
-{
-  "bet": {
-    "id": "bet_xyz",
-    "outcomeId": "out_1",
-    "amountDrops": "10000000",
-    "weightScore": 1.5,
-    "effectiveAmountDrops": "15000000"
-  },
-  "unsignedTx": { /* Payment tx for user to sign */ }
-}
-```
-
-The `effectiveAmountDrops` includes the user's weight multiplier.
-
----
-
-## 4. Trade on DEX
-
-Outcome tokens can be traded on XRPL's native DEX before resolution.
-
-### Create Sell Offer
-
-```bash
-# Sell 5 outcome tokens for 8 XRP
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/offers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "outcome": "YES",
-    "side": "sell",
-    "tokenAmount": "5",
-    "xrpAmountDrops": "8000000",
-    "userAddress": "rUserAddress..."
-  }'
-```
-
-**Response:**
-```json
-{
-  "data": {
-    "offer": { /* XRPL OfferCreate tx to sign */ }
-  }
-}
-```
-
-### View Trades
-
-```bash
-curl http://localhost:3001/api/markets/mkt_abc123/trades
-```
-
----
-
-## 5. Close Market
-
-Stop accepting bets before resolution:
-
-```bash
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/close \
-  -H "X-Admin-Key: $ADMIN_KEY"
-```
-
-**Response:**
-```json
-{
-  "data": {
-    "id": "mkt_abc123",
-    "status": "Closed"
-  }
-}
-```
-
----
-
-## 6. Resolve Market
-
-Declare the winning outcome (requires multi-sign in production):
-
-```bash
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/resolve \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Key: $ADMIN_KEY" \
-  -d '{
-    "outcomeId": "out_1"
-  }'
-```
-
-**Response:**
-```json
-{
-  "data": {
-    "id": "mkt_abc123",
-    "status": "Resolved",
-    "resolvedOutcomeId": "out_1"
-  }
-}
-```
-
----
-
-## 7. Execute Payouts
-
-Generate payout transactions for winners:
-
-```bash
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/payouts \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Key: $ADMIN_KEY" \
-  -d '{
-    "batchSize": 50
-  }'
-```
-
-**Response:**
+Response includes payout transactions to sign:
 ```json
 {
   "data": {
     "payouts": [
       {
-        "id": "pay_1",
+        "id": "pay_xxx",
         "userId": "rWinnerAddress...",
-        "amountDrops": "25000000",
-        "payoutTx": { /* Payment tx to sign and submit */ }
+        "amountDrops": "15000000",
+        "payoutTx": { /* Payment tx to sign */ }
       }
-    ],
-    "count": 3
+    ]
   }
 }
 ```
 
-### Confirm Each Payout
+### Step 7: Sign & Confirm Payouts
 
-After signing and submitting each payout tx:
+For each payout, sign the `payoutTx` with the operator wallet, then confirm:
 
 ```bash
-curl -X POST http://localhost:3001/api/markets/mkt_abc123/payouts/confirm \
+curl -X POST http://localhost:3001/api/markets/YOUR_MARKET_ID/payouts/confirm \
   -H "Content-Type: application/json" \
-  -H "X-Admin-Key: $ADMIN_KEY" \
-  -d '{
-    "payoutId": "pay_1",
-    "txHash": "PAYOUT_TX_HASH..."
-  }'
+  -H "X-Admin-Key: YOUR_ADMIN_KEY" \
+  -d '{"payoutId": "pay_xxx", "txHash": "SIGNED_TX_HASH"}'
 ```
 
-### View Payout Status
+### Step 8: Check Payout Status
 
 ```bash
-curl http://localhost:3001/api/markets/mkt_abc123/payouts
+curl http://localhost:3001/api/markets/YOUR_MARKET_ID/payouts
 ```
+
+---
+
+## API Reference
+
+### Markets
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/markets` | GET | List all markets |
+| `/api/markets` | POST | Create market (admin) |
+| `/api/markets/:id` | GET | Get market details |
+| `/api/markets/:id/test-open` | POST | Open market for testing (admin) |
+| `/api/markets/:id/fix-operator` | POST | Fix operator address (admin) |
+| `/api/markets/:id/close` | POST | Close market (admin) |
+| `/api/markets/:id/resolve` | POST | Resolve market (admin) |
+
+### Bets
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/markets/:id/bets` | GET | List bets for market |
+| `/api/markets/:id/bets` | POST | Place bet |
+| `/api/markets/:id/bets/:betId/confirm` | POST | Confirm bet after signing |
+
+### Payouts
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/markets/:id/payouts` | GET | List payouts for market |
+| `/api/markets/:id/payouts` | POST | Generate payout transactions (admin) |
+| `/api/markets/:id/payouts/confirm` | POST | Confirm payout after signing (admin) |
+
+### Users
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/users/:address/bets` | GET | List user's bets |
+| `/api/users/:address/attributes` | GET | Get user attributes |
+| `/balance/:address` | GET | Get XRP balance |
 
 ---
 
@@ -326,20 +186,20 @@ curl http://localhost:3001/api/markets/mkt_abc123/payouts
 
 > "MITATE is a prediction market powered entirely by XRPL. It uses 6 native XRPL features — no smart contracts, pure XRPL."
 
-**Show:** Homepage with multi-outcome markets
+**Show:** Homepage with markets
 
 ---
 
 ### Connect & Bet (0:20 - 1:00)
 
-> "Let's bet on the Miyagi governor election. Four candidates — I'll bet 10 XRP on the incumbent."
+> "Let's bet on the Miyagi governor election."
 
 **Actions:**
 1. Connect GemWallet
-2. Select market → Select outcome → Enter amount
-3. Sign transaction in GemWallet
+2. Select market → Select outcome → Enter 5 XRP
+3. Sign transaction
 
-> "My bet is locked in XRPL Escrow. I received outcome tokens representing my position."
+> "My bet is recorded on XRPL with a memo containing the market and outcome."
 
 ---
 
@@ -352,17 +212,17 @@ curl http://localhost:3001/api/markets/mkt_abc123/payouts
 3. **Trust Lines** — "Users opt-in to hold outcome tokens"
 4. **DEX** — "Trade positions before resolution"
 5. **Multi-Sign** — "Resolution requires committee approval"
-6. **Memo** — "All transactions carry audit data"
+6. **Memo** — "All transactions carry structured data"
 
-**Show:** Transaction on XRPL Explorer with Memo field
+**Show:** Transaction on XRPL Explorer
 
 ---
 
-### Resolution & Payout (2:00 - 2:50)
+### Resolution (2:00 - 2:50)
 
-> "When the election ends, the multi-sign committee declares the winner. Winners share the pool proportionally — parimutuel, like horse racing."
+> "When resolved, winners share the pool proportionally — parimutuel betting."
 
-**Show:** Portfolio page with positions
+**Show:** Admin resolving market (if time permits)
 
 ---
 
@@ -374,36 +234,45 @@ curl http://localhost:3001/api/markets/mkt_abc123/payouts
 
 ## XRPL Features Summary
 
-| Feature | How MITATE Uses It |
-|---------|-------------------|
+| Feature | Usage |
+|---------|-------|
 | **Escrow** | Time-locked XRP pool for bets |
-| **Issued Currency** | Outcome tokens (multi-outcome supported) |
+| **Issued Currency** | Outcome tokens per market |
 | **Trust Line** | Required to hold outcome tokens |
 | **DEX** | Secondary trading of positions |
 | **Multi-Sign** | Resolution governance |
-| **Memo** | Structured audit trail |
+| **Memo** | Structured audit trail on all transactions |
 
 ---
 
 ## Troubleshooting
 
+### "temREDUNDANT" Error
+- Payment going to self (operator == bettor)
+- Fix: Ensure `XRPL_OPERATOR_ADDRESS` is set and different from user
+
+### "LastLedgerSequence" Error
+- Transaction expired before signing
+- Fix: Try again quickly, or check network latency
+
 ### Market Stuck in Draft
-- Sign the `escrowTx` returned from POST /markets
-- Call POST /markets/:id/confirm with the tx hash
+- Run `POST /api/markets/:id/test-open` to open
 
-### "Cannot resolve market" Error
-- Market must be "Closed" first
-- Call POST /markets/:id/close before resolving
+### Operator Address Not Set
+- Run `POST /api/markets/:id/fix-operator` to update
 
-### Payouts Not Working
-- Market must be "Resolved" first
-- Check operator wallet has enough XRP for payouts
+### No Payouts After Resolution
+- Payouts must be explicitly executed via API
+- Run `POST /api/markets/:id/payouts` then confirm each
 
 ---
 
-## Backup Plan
+## Files Reference
 
-If live demo fails:
-1. **Show code** — `apps/api/src/xrpl/tx-builder.ts`
-2. **Show pre-recorded video**
-3. **Walk through ADR.md** — Architecture decisions
+| File | Purpose |
+|------|---------|
+| `apps/api/.env` | API configuration |
+| `apps/api/src/services/bets.ts` | Bet placement logic |
+| `apps/api/src/services/payouts.ts` | Payout calculation |
+| `apps/api/src/xrpl/tx-builder.ts` | XRPL transaction builders |
+| `apps/web/app/admin/page.tsx` | Admin dashboard |
