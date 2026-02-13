@@ -169,7 +169,7 @@ export async function confirmBet(
 ): Promise<{ betId: string; status: string }> {
   return apiFetch(`/markets/${marketId}/bets/${betId}/confirm`, {
     method: "POST",
-    body: JSON.stringify({ paymentTxHash: txHash }),
+    body: JSON.stringify({ txHash }),
   });
 }
 
