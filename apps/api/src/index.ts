@@ -11,7 +11,6 @@ import offersRoutes from "./routes/offers";
 import resolveRoutes from "./routes/resolve";
 import usersRoutes from "./routes/users";
 import categoriesRoutes from "./routes/categories";
-import adminRoutes from "./routes/admin";
 
 const app = new Hono();
 
@@ -34,7 +33,6 @@ app.route("/api", offersRoutes);
 app.route("/api", resolveRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/categories", categoriesRoutes);
-app.route("/api/admin", adminRoutes);
 
 // Root endpoint
 app.get("/", (c) => {
