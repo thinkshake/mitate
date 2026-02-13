@@ -143,9 +143,15 @@ export function placeBet(input: PlaceBetInput): PlaceBetResult {
     : undefined;
 
   // Build Payment tx (user pays XRP to operator)
+  // Use market's stored operator address (set at market creation)
+  const operatorAddress = market.operator_address || config.operatorAddress;
+  if (!operatorAddress) {
+    throw new Error("Operator address not configured");
+  }
+
   const paymentTx = buildOutcomeBetPayment({
     account: input.userAddress,
-    destination: config.operatorAddress,
+    destination: operatorAddress,
     amountDrops: input.amountDrops,
     marketId: input.marketId,
     outcomeId: input.outcomeId,
