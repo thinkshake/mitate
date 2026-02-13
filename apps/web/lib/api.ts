@@ -298,6 +298,18 @@ export async function adminGetMarkets(adminKey: string): Promise<Market[]> {
   return Array.isArray(result) ? result : result.markets;
 }
 
+export interface CreateMarketResponse extends Market {
+  escrowTx: {
+    TransactionType: "EscrowCreate";
+    Account: string;
+    Destination: string;
+    Amount: string;
+    CancelAfter: number;
+    DestinationTag?: number;
+    Memos?: unknown[];
+  };
+}
+
 export async function adminCreateMarket(
   adminKey: string,
   body: {
@@ -308,11 +320,24 @@ export async function adminCreateMarket(
     bettingDeadline: string;
     outcomes: { label: string }[];
   },
-): Promise<Market> {
-  return apiFetch<Market>("/markets", {
+): Promise<CreateMarketResponse> {
+  return apiFetch<CreateMarketResponse>("/markets", {
     method: "POST",
     headers: adminHeaders(adminKey),
     body: JSON.stringify(body),
+  });
+}
+
+export async function adminConfirmMarket(
+  adminKey: string,
+  marketId: string,
+  escrowTxHash: string,
+  escrowSequence: number,
+): Promise<{ id: string; status: string }> {
+  return apiFetch(`/markets/${marketId}/confirm`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+    body: JSON.stringify({ escrowTxHash, escrowSequence }),
   });
 }
 

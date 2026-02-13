@@ -3,6 +3,7 @@
  */
 import { config } from "../config";
 import { buildEscrowCreate } from "../xrpl/tx-builder";
+import { getTransaction } from "../xrpl/client";
 import type { MitateMemoData } from "../xrpl/memo";
 import {
   createMarket,
@@ -100,12 +101,13 @@ export async function createNewMarket(
 /**
  * Confirm market creation after XRPL tx is validated.
  * Transitions market from Draft to Open.
+ * If escrowSequence is 0 or 1, fetches it from XRPL.
  */
-export function confirmMarketCreation(
+export async function confirmMarketCreation(
   marketId: string,
   escrowTxHash: string,
   escrowSequence: number
-): Market | null {
+): Promise<Market | null> {
   const market = getMarketById(marketId);
   if (!market) {
     throw new Error("Market not found");
@@ -114,12 +116,30 @@ export function confirmMarketCreation(
     throw new Error(`Cannot confirm market in ${market.status} status`);
   }
 
+  // Fetch sequence from XRPL if not provided properly
+  let finalSequence = escrowSequence;
+  if (escrowSequence <= 1) {
+    try {
+      const txData = await getTransaction(escrowTxHash);
+      if (txData?.Sequence) {
+        finalSequence = txData.Sequence;
+      }
+      // Verify transaction was successful
+      if (txData?.meta?.TransactionResult !== "tesSUCCESS") {
+        throw new Error(`Transaction failed: ${txData?.meta?.TransactionResult}`);
+      }
+    } catch (err) {
+      console.warn("Could not fetch tx sequence from XRPL, using provided:", err);
+      // Continue with provided sequence
+    }
+  }
+
   // Create escrow record
   const deadline = new Date(market.betting_deadline);
   createEscrow({
     marketId: market.id,
     amountDrops: "1",
-    sequence: escrowSequence,
+    sequence: finalSequence,
     createTx: escrowTxHash,
     cancelAfter: Math.floor(deadline.getTime() / 1000),
   });
@@ -128,7 +148,7 @@ export function confirmMarketCreation(
   return updateMarket(marketId, {
     status: "Open",
     xrplEscrowTx: escrowTxHash,
-    xrplEscrowSequence: escrowSequence,
+    xrplEscrowSequence: finalSequence,
   });
 }
 

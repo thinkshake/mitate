@@ -170,7 +170,7 @@ markets.post("/:id/confirm", zValidator("json", confirmMarketSchema), async (c) 
   const body = c.req.valid("json");
 
   try {
-    const market = confirmMarketCreation(id, body.escrowTxHash, body.escrowSequence);
+    const market = await confirmMarketCreation(id, body.escrowTxHash, body.escrowSequence);
     if (!market) {
       return c.json({ error: { code: "MARKET_NOT_FOUND", message: "Market not found" } }, 404);
     }

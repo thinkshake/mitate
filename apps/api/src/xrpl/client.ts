@@ -152,3 +152,23 @@ export async function getLedgerInfo() {
     ledger_index: "validated",
   });
 }
+
+/**
+ * Get transaction details via JSON-RPC.
+ * Returns the transaction with its Sequence number.
+ */
+export async function getTransaction(txHash: string) {
+  return xrplRpcRequest<{
+    Account: string;
+    Sequence: number;
+    TransactionType: string;
+    hash: string;
+    validated: boolean;
+    meta?: {
+      TransactionResult: string;
+    };
+  }>("tx", {
+    transaction: txHash,
+    binary: false,
+  });
+}
